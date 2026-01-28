@@ -1,0 +1,8 @@
+[general]
+data_dir = "./data"
+timeout = 10
+
+[cache]
+search_ttl = 86400  # 1 day
+quote_short_ttl = 300 # 5 min
+quote_long_ttl = 3600 # 1 hour

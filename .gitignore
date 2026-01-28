@@ -1,0 +1,26 @@
+﻿# Data
+data/
+
+# IDEs and Tools
+.trae/
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.pylint.d/
+
+# OS
+.DS_Store
+Thumbs.db
