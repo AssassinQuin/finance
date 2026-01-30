@@ -40,9 +40,7 @@ app.command(
     rich_help_panel="行情与数据",
 )(gold.gold)
 app.command(name="au", help="黄金储备 (gold 简写)", hidden=True)(gold.gold)
-app.command(name="gpr", help="全球地缘政治风险指数分析", rich_help_panel="行情与数据")(
-    gpr.gpr
-)
+app.command(name="gpr", help="全球地缘政治风险指数分析", rich_help_panel="行情与数据")(gpr.gpr)
 
 # --- 系统管理命令 ---
 app.command(name="update", help="更新本地资产索引数据库", rich_help_panel="系统管理")(
