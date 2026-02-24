@@ -1,4 +1,4 @@
-﻿from typing import List
+from typing import List
 
 from rich import box
 from rich.console import Console
@@ -6,7 +6,8 @@ from rich.panel import Panel
 from rich.table import Table
 import plotext as plt
 
-from ..core.models import Asset, Quote
+from ..core.models.asset import Asset, Quote
+from ..core.models.forex import ExchangeRate
 
 console = Console()
 
@@ -319,3 +320,31 @@ class ConsolePresenter:
     @staticmethod
     def status(message: str):
         return console.status(f"[bold green]{message}[/bold green]")
+    
+    @staticmethod
+    def print_exchange_rate(rate: ExchangeRate):
+        console.print(
+            Panel(
+                f"[bold]{rate.base_currency}/{rate.quote_currency}[/bold]: [cyan]{rate.rate:.4f}[/cyan]\n"
+                f"数据源: {rate.source or 'N/A'}",
+                title="汇率查询结果",
+                border_style="cyan",
+            )
+        )
+    
+    @staticmethod
+    def print_exchange_rates(rates: List[ExchangeRate], base: str):
+        table = Table(
+            box=box.SIMPLE,
+            header_style="bold cyan",
+            title=f"{base} 汇率表",
+        )
+        table.add_column("货币对", justify="left", style="green")
+        table.add_column("汇率", justify="right", style="bold")
+        
+        for rate in rates:
+            table.add_row(
+                f"{rate.base_currency}/{rate.quote_currency}",
+                f"{rate.rate:.4f}",
+            )
+        console.print(table)

@@ -1,72 +1,52 @@
-﻿from pathlib import Path
-from typing import Any, Dict
-
-import toml
-
-
-class Config:
-    _instance = None
-    _data: Dict[str, Any] = {}
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(Config, cls).__new__(cls)
-            cls._instance._load()
-        return cls._instance
-
-    def _load(self):
-        config_path = Path("config.toml")
-        if config_path.exists():
-            self._data = toml.load(config_path)
-        else:
-            # Defaults
-            self._data = {
-                "general": {"data_dir": "./data", "timeout": 10},
-                "cache": {
-                    "search_ttl": 86400,
-                    "quote_short_ttl": 300,
-                    "quote_long_ttl": 3600,
-                },
-            }
-
-    @property
-    def data_dir(self) -> Path:
-        # Resolve path relative to project root
-        # This file is in fcli/core/config.py, so root is 3 levels up?
-        # No, fcli is a package.
-        # Structure:
-        # project_root/
-        #   fcli/
-        #     core/
-        #       config.py
-        #   data/
-        
-        # If user configured an absolute path, use it
-        path_str = self._data["general"]["data_dir"]
-        path = Path(path_str)
-        if path.is_absolute():
-            return path
-            
-        # Otherwise, resolve relative to project root
-        current_file = Path(__file__).resolve()
-        project_root = current_file.parent.parent.parent
-        return project_root / path_str
-
-    @property
-    def timeout(self) -> int:
-        return self._data["general"]["timeout"]
-
-    @property
-    def search_ttl(self) -> int:
-        return self._data["cache"]["search_ttl"]
-
-    @property
-    def quote_short_ttl(self) -> int:
-        return self._data["cache"]["quote_short_ttl"]
-
-    @property
-    def quote_long_ttl(self) -> int:
-        return self._data["cache"]["quote_long_ttl"]
+from pydantic_settings import BaseSettings
+from pydantic import Field
+from pathlib import Path
+from typing import List
 
 
-config = Config()
+class DatabaseSettings(BaseSettings):
+    host: str = "127.0.0.1"
+    port: int = 3306
+    user: str = "root"
+    password: str = "123456zx"
+    database: str = "fcli"
+    pool_min: int = 2
+    pool_max: int = 10
+
+    class Config:
+        env_prefix = "FCLI_DB_"
+
+
+class CacheSettings(BaseSettings):
+    search_ttl: int = Field(default=86400, description="搜索缓存 TTL (秒)")
+    quote_ttl: int = Field(default=300, description="行情缓存 TTL (秒)")
+    forex_ttl: int = Field(default=3600, description="汇率缓存 TTL (秒)")
+    gold_ttl: int = Field(default=86400, description="黄金数据缓存 TTL (秒)")
+    gpr_ttl: int = Field(default=86400, description="GPR 数据缓存 TTL (秒)")
+
+    class Config:
+        env_prefix = "FCLI_CACHE_"
+
+
+class SourceSettings(BaseSettings):
+    quote_priority: List[str] = Field(default=["sina", "eastmoney", "yahoo"])
+    forex_priority: List[str] = Field(default=["frankfurter", "exchangerate"])
+    gold_priority: List[str] = Field(default=["imf"])
+    fallback_enabled: bool = True
+
+    class Config:
+        env_prefix = "FCLI_SOURCE_"
+
+
+class Settings(BaseSettings):
+    data_dir: Path = Path("./data")
+    timeout: int = 10
+    db: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    cache: CacheSettings = Field(default_factory=CacheSettings)
+    source: SourceSettings = Field(default_factory=SourceSettings)
+
+    class Config:
+        env_prefix = "FCLI_"
+
+
+settings = Settings()

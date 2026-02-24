@@ -1,95 +1,96 @@
-﻿# Finance CLI (FCLI) - 命令行金融行情工具
+# FCLI - 命令行金融行情工具
 
-FCLI 是一个基于 Python 的轻量级命令行金融工具，支持 A股、港股、美股、公募基金以及全球重要指数的实时行情查询与资产管理。
+FCLI 是一个基于 Python 的轻量级命令行金融工具，支持 A股、港股、美股、公募基金、汇率及黄金储备等数据的实时查询。
 
 ## 核心特性
 
--   **多源聚合 (Strategy Pattern)**: 采用策略模式，自动调度新浪、东方财富等多个数据源，确保行情获取的准确性与覆盖度。
--   **本地全量索引**: 收录全球超过 2.6 万条资产元数据。搜索不再仅仅依赖远程 API，支持极速本地匹配。
--   **高性能并发**: 使用 `asyncio` 异步抓取行情，多资产查询秒级响应。
--   **智能搜索**: 优先搜索本地索引，支持代码前缀匹配和名称模糊搜索，轻松查找“美元指数”、“纳斯达克”等全球指数。
--   **人性化设计**:
-    *   **默认行为**: 直接运行 `python run.py` 即可查看自选行情。
-    *   **命令简写**: 支持 `ls` (list), `rm` (remove) 等快捷指令。
-    *   **数据隔离**: 自动定位项目根目录下的 `data/` 文件夹，不受执行路径影响。
+- **插拔式适配器架构**: 采用适配器模式，支持新浪、东方财富、Frankfurter 等多个数据源，自动选择最优路径
+- **责任链数据处理**: 数据清洗流程：格式标准化 → 数据验证 → 数据补全 → 去重合并
+- **多格式输出**: 支持 Rich 表格、JSON、CSV、Markdown 等多种输出格式
+- **高性能并发**: 使用 `asyncio` 异步抓取行情，支持并行查询取最快响应
+- **自动存储策略**: 检测 MySQL 配置，有则存数据库，否则存本地 SQLite
 
-## 安装指南
+## 快速开始
 
 ### 环境要求
--   Python 3.12+
+- Python 3.11+
+- MySQL (可选，不配置则使用 SQLite)
 
-### 快速开始
+### 安装依赖
+```bash
+pip install -r requirements.txt
+```
 
-1.  **创建并激活虚拟环境 (推荐)**:
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
+### 配置 (可选)
+复制 `.env.example` 为 `.env` 并配置：
+```bash
+cp .env.example .env
+# 编辑 .env 填入你的配置
+```
 
-2.  **安装依赖**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **初始化索引**:
-    首次使用建议运行更新，拉取全量资产列表：
-    ```bash
-    python run.py update
-    ```
+### 运行
+```bash
+python run.py --help
+```
 
 ## 使用说明
 
-### 1. 查看行情 (默认命令)
-如果不带任何参数运行，将直接显示所有自选资产的实时行情：
+### 行情查询
 ```bash
-python run.py
-```
-或使用显式命令：
-```bash
-python run.py quote
-```
+# 查询单个股票
+python run.py quote 600519
 
-### 2. 搜索资产
-支持按名称或代码搜索。搜索结果会显示 `API Code`，方便查看数据来源。
-```bash
-python run.py search 美元指数
-python run.py search NDX
+# 批量查询
+python run.py quote 600519 000001
 ```
 
-### 3. 管理自选
--   **添加资产**: 支持批量添加。程序会自动匹配最接近的结果。
-    ```bash
-    python run.py add SH000001 SP500 UDI
-    ```
--   **删除资产**:
-    ```bash
-    python run.py remove SH000001
-    # 或简写
-    python run.py rm SP500
-    ```
--   **列出所有资产**:
-    ```bash
-    python run.py list
-    # 或简写
-    python run.py ls
-    ```
-
-### 4. 更新本地索引
-当发现搜索不到新发行的基金或全球指数时，运行此命令刷新本地数据库：
+### 汇率查询
 ```bash
-python run.py update
+# 美元兑人民币
+python run.py forex USD CNY
+
+# 美元兑所有主要货币
+python run.py forex USD
 ```
 
-## 项目结构
+### 市场数据
+```bash
+# 黄金储备
+python run.py market gold
 
-```text
+# 地缘政治风险指数
+python run.py market gpr
+```
+
+## 项目架构
+
+```
 fcli/
-├── commands/       # 命令行入口逻辑
-├── services/       # 业务逻辑 (索引服务、行情聚合服务)
-├── sources/        # 数据源策略 (新浪、东财等)
-├── core/           # 核心模型、配置与存储
-└── utils/          # 格式化输出与工具函数
+├── adapter/           # 插拔式适配器层
+│   ├── base.py      # BaseAdapter, AssetType
+│   ├── registry.py  # 适配器注册表
+│   ├── selector/   # 选择策略 (资产路由/优先级/并行)
+│   └── sources/    # 具体适配器实现
+│
+├── processor/       # 责任链处理管道
+│   ├── normalize.py  # 格式标准化
+│   ├── validate.py  # 数据验证
+│   ├── enrich.py    # 数据补全
+│   └── merge.py    # 去重合并
+│
+├── storage/         # 存储层 (MySQL/SQLite)
+├── renderer/        # 渲染层 (Rich/JSON/CSV/Markdown)
+└── pipeline/       # 业务管道
 ```
 
-## 配置
-配置文件位于 `config.toml`，可调整数据存储路径等基础设置。
+## 配置说明
+
+| 环境变量 | 说明 | 默认值 |
+|---------|------|-------|
+| FCLI_DB_* | MySQL 数据库配置 | 使用 SQLite |
+| FCLI_CACHE_*_TTL | 各类数据缓存时间 | 见 .env.example |
+| FCLI_TIMEOUT | HTTP 请求超时(秒) | 10 |
+
+## License
+
+MIT
