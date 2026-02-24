@@ -1,4 +1,4 @@
-from typing import List
+﻿from typing import List
 
 from rich import box
 from rich.console import Console
@@ -6,8 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 import plotext as plt
 
-from ..core.models.asset import Asset, Quote
-from ..core.models.forex import ExchangeRate
+from ..core.models import Asset, Quote, ExchangeRate
 
 console = Console()
 
@@ -71,7 +70,9 @@ class ConsolePresenter:
         table.add_column("市场", justify="center")
         table.add_column("类型", justify="center")
 
-        for quote in quotes:
+        sorted_quotes = sorted(quotes, key=lambda q: q.change_percent, reverse=True)
+
+        for quote in sorted_quotes:
             # Colorize change percent
             change_str = f"{quote.change_percent:+.2f}%"
             if quote.change_percent > 0:
@@ -320,7 +321,7 @@ class ConsolePresenter:
     @staticmethod
     def status(message: str):
         return console.status(f"[bold green]{message}[/bold green]")
-    
+
     @staticmethod
     def print_exchange_rate(rate: ExchangeRate):
         console.print(
@@ -331,7 +332,7 @@ class ConsolePresenter:
                 border_style="cyan",
             )
         )
-    
+
     @staticmethod
     def print_exchange_rates(rates: List[ExchangeRate], base: str):
         table = Table(
@@ -341,7 +342,7 @@ class ConsolePresenter:
         )
         table.add_column("货币对", justify="left", style="green")
         table.add_column("汇率", justify="right", style="bold")
-        
+
         for rate in rates:
             table.add_row(
                 f"{rate.base_currency}/{rate.quote_currency}",

@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+﻿from pydantic_settings import BaseSettings
 from pydantic import Field
 from pathlib import Path
 from typing import List
@@ -29,7 +29,7 @@ class CacheSettings(BaseSettings):
 
 
 class SourceSettings(BaseSettings):
-    quote_priority: List[str] = Field(default=["sina", "eastmoney", "yahoo"])
+    quote_priority: List[str] = Field(default=["eastmoney", "sina", "yahoo"])
     forex_priority: List[str] = Field(default=["frankfurter", "exchangerate"])
     gold_priority: List[str] = Field(default=["imf"])
     fallback_enabled: bool = True
@@ -49,4 +49,5 @@ class Settings(BaseSettings):
         env_prefix = "FCLI_"
 
 
-settings = Settings()
+config = Settings()
+settings = config  # Alias for backward compatibility if needed

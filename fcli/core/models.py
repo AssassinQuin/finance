@@ -1,4 +1,4 @@
-from enum import Enum
+﻿from enum import Enum
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -46,3 +46,10 @@ class Quote(BaseModel):
     low: Optional[float] = None
     volume: Optional[str] = None
     extra: Dict[str, Any] = Field(default_factory=dict)
+
+class ExchangeRate(BaseModel):
+    base_currency: str = Field(..., description="Base currency code, e.g., USD")
+    quote_currency: str = Field(..., description="Quote currency code, e.g., CNY")
+    rate: float = Field(..., description="Exchange rate")
+    source: Optional[str] = Field(None, description="Data source")
+    update_time: Optional[datetime] = Field(None, description="Last update time")
