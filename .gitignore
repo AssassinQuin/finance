@@ -1,6 +1,10 @@
 ﻿# Data
 data/
 
+# Local environment (DO NOT COMMIT)
+.env
+*.local
+
 # IDEs and Tools
 .trae/
 .vscode/
