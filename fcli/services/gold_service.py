@@ -6,8 +6,7 @@ Supports multiple data sources: WGC, IMF, and direct central bank scrapers.
 import json
 import time
 import logging
-from datetime import datetime, date
-from pathlib import Path
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from ..core.config import config
@@ -20,8 +19,7 @@ from ..core.database import (
     FetchLog,
     FetchLogStore,
 )
-from ..infra.http_client import http_client
-from .scrapers import WGCScraper, IMFScraper, ScraperResult
+from .scrapers import WGCScraper, IMFScraper, AkShareScraper, SAFEScraper, ScraperResult
 from .scrapers.central_bank import get_scraper, get_supported_countries
 
 logger = logging.getLogger(__name__)
@@ -40,6 +38,7 @@ TOP_20_COUNTRIES = [
     {"code": "NLD", "name": "荷兰"},
     {"code": "TUR", "name": "土耳其"},
     {"code": "PRT", "name": "葡萄牙"},
+
     {"code": "UZB", "name": "乌兹别克斯坦"},
     {"code": "SAU", "name": "沙特阿拉伯"},
     {"code": "GBR", "name": "英国"},
@@ -93,6 +92,8 @@ class GoldService:
         # Initialize scrapers
         self._wgc_scraper = WGCScraper()
         self._imf_scraper = IMFScraper()
+        self._akshare_scraper = AkShareScraper()
+        self._safe_scraper = SAFEScraper()
 
     def _load_local_data(self):
         """Load cached data from local JSON file"""
@@ -102,8 +103,9 @@ class GoldService:
                     self._local_data = json.load(f)
             except (json.JSONDecodeError, FileNotFoundError):
                 self._local_data = {}
-    
+
     def _save_local_data(self):
+
         """Save data to local JSON file"""
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.data_file, "w", encoding="utf-8") as f:
@@ -207,7 +209,28 @@ class GoldService:
         
         return None
     
-    def _get_default_data(self) -> List[Dict]:
+    async def _fetch_from_akshare(self) -> List[Dict]:
+        """Fetch China gold reserves history from AkShare (online)"""
+        logger.info("Fetching China gold reserves from AkShare...")
+        result: ScraperResult = await self._akshare_scraper.scrape()
+        
+        if result.success and result.data:
+            return [
+                {
+                    "country": r.country_name,
+                    "code": r.country_code,
+                    "amount": r.amount_tonnes,
+                    "percent_of_reserves": r.percent_of_reserves,
+                    "date": r.report_date.strftime("%Y-%m"),
+                    "source": "AkShare",
+                }
+                for r in result.data
+            ]
+        
+        logger.warning(f"AkShare fetch failed: {result.error_message}")
+        return []
+    
+
         """Get default fallback data"""
         current_month = datetime.now().strftime("%Y-%m")
         return [
@@ -425,6 +448,48 @@ class GoldService:
             {"code": "CHN", "country": "中国", "amount": 2235.39, "date": "2025-11"},
         ]
         return [h for h in default_history if h["code"] == country_code.upper()]
+    
+    async def get_china_history_online(self, months: int = 60) -> List[Dict]:
+        """
+        Get China gold reserves history from SAFE (官方权威数据).
+        
+        数据来源: 国家外汇管理局官网 (www.safe.gov.cn)
+        更新频率: 每月7日左右
+        
+        Args:
+            months: Number of months of history to return (default 60 = 5 years)
+            
+        Returns:
+            List of historical reserve data from SAFE
+        """
+        # 优先使用 SAFE 官方数据
+        logger.info("Fetching China gold reserves from SAFE (官方数据)...")
+        result: ScraperResult = await self._safe_scraper.scrape()
+        
+        if result.success and result.data:
+            data = [
+                {
+                    "country": r.country_name,
+                    "code": r.country_code,
+                    "amount": r.amount_tonnes,
+                    "date": r.report_date.strftime("%Y-%m"),
+                    "source": r.data_source,
+                }
+                for r in result.data
+            ]
+            # Sort by date descending (most recent first)
+            data.sort(key=lambda x: x["date"], reverse=True)
+            return data[:months]
+        
+        # 如果 SAFE 失败，尝试 AkShare（但会有警告）
+        logger.warning("SAFE fetch failed, falling back to AkShare (数据可能不完整)")
+        akshare_data = await self._fetch_from_akshare()
+        
+        if akshare_data:
+            return akshare_data[:months]
+        
+        logger.warning("Failed to fetch China gold history from all sources")
+        return []
 
 
 # Singleton instance

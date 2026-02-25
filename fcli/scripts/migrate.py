@@ -87,12 +87,11 @@ async def create_tables():
 async def run_migration():
     """Run migration"""
     try:
-        if not Database.is_enabled():
-            print("Database not configured, skipping migration")
-            return
-        
         # Initialize database
-        await Database.init(config)
+        success = await Database.init(config)
+        if not success:
+            print("Database not configured or connection failed")
+            return
         
         # Create tables
         await create_tables()
@@ -111,42 +110,44 @@ async def run_migration():
 
 async def rollback():
     """Rollback migration"""
-    if not Database.is_enabled():
-        return
+    try:
+        success = await Database.init(config)
+        if not success:
+            print("Database not configured")
+            return
         
-    pool = Database.get_pool()
-    
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("DROP TABLE IF EXISTS gold_reserves")
-            await cur.execute("DROP TABLE IF EXISTS central_bank_schedules")
-            await cur.execute("DROP TABLE IF EXISTS fetch_logs")
-            await cur.execute("DROP TABLE IF EXISTS migrations")
-            print("Rollback completed")
+        pool = Database.get_pool()
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("DROP TABLE IF EXISTS gold_reserves")
+                await cur.execute("DROP TABLE IF EXISTS central_bank_schedules")
+                await cur.execute("DROP TABLE IF EXISTS fetch_logs")
+                await cur.execute("DROP TABLE IF EXISTS migrations")
+                print("Rollback completed")
+    except Exception as e:
+        print(f"Rollback failed: {e}")
+        raise
 
 
 async def main():
-    import asyncio
     import sys
-    from fcli.core.config import config
-    from fcli.core.database import Database
     
     # Parse command line arguments
-    command = sys.argv[1] if sys.argv[1] in ["migrate", "rollback"]:
-        commands = {
-            "migrate": run_migration,
-            "rollback": rollback_migration,
-        }
-        
-        if command == "migrate":
-            asyncio.run(run_migration())
-        elif command == "rollback":
-            asyncio.run(rollback_migration())
-        else:
-            print(f"Unknown command: {command}")
-            print("Usage: python migrate.py [migrate|rollback]")
-            sys.exit(1)
-
+    if len(sys.argv) < 2:
+        print("Usage: python -m fcli.scripts.migrate [migrate|rollback]")
+        sys.exit(1)
+    
+    command = sys.argv[1]
+    
+    if command == "migrate":
+        await run_migration()
+    elif command == "rollback":
+        await rollback()
+    else:
+        print(f"Unknown command: {command}")
+        print("Usage: python -m fcli.scripts.migrate [migrate|rollback]")
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -39,7 +39,7 @@ class CacheSettings(BaseSettings):
 class SourceSettings(BaseSettings):
     quote_priority: List[str] = Field(default=["eastmoney", "sina", "yahoo"])
     forex_priority: List[str] = Field(default=["frankfurter", "exchangerate"])
-    gold_priority: List[str] = Field(default=["wgc", "imf", "tradingeconomics"])
+    gold_priority: List[str] = Field(default=["akshare", "wgc", "imf"])
     fallback_enabled: bool = True
 
     model_config = SettingsConfigDict(

@@ -16,7 +16,7 @@ from .core.database import Database
 app = typer.Typer(
     help="FCLI - 命令行金融工具",
     add_completion=False,
-    no_args_is_help=True,
+    no_args_is_help=False,  # 改为 False，允许默认命令
     rich_markup_mode="rich",
     context_settings={"max_content_width": 120},
 )
@@ -28,6 +28,14 @@ app.add_typer(search_app, name="search", help="搜索资产")
 app.add_typer(system_app, name="系统管理")
 
 app.command(name="quote", help="查询股票/基金实时行情")(quote_cmd)
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    """默认运行 quote 命令"""
+    if ctx.invoked_subcommand is None:
+        # 没有指定子命令时，运行 quote
+        quote_cmd()
 
 
 async def gold_async(

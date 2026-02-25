@@ -9,6 +9,13 @@ from ..infra.http_client import http_client
 
 class QuoteService:
     async def fetch_single(self, asset: Asset) -> Optional[Quote]:
+        # 先检查缓存
+        cache_key = f"quote:{asset.code}"
+        cached = cache.get(cache_key)
+        if cached:
+            return Quote(**cached)
+        
+        # 从网络获取
         for source in config.source.quote_priority:
             try:
                 if source == "sina":
@@ -21,6 +28,8 @@ class QuoteService:
                     continue
 
                 if quote:
+                    # 存入缓存
+                    cache.set(cache_key, self._quote_to_dict(quote), config.cache.quote_ttl)
                     return quote
             except Exception as e:
                 if not config.source.fallback_enabled:
@@ -28,6 +37,21 @@ class QuoteService:
                 continue
 
         return None
+
+    def _quote_to_dict(self, quote: Quote) -> dict:
+        """将 Quote 对象转换为字典用于缓存"""
+        return {
+            "code": quote.code,
+            "name": quote.name,
+            "price": quote.price,
+            "change_percent": quote.change_percent,
+            "update_time": quote.update_time,
+            "market": quote.market.value if hasattr(quote.market, 'value') else quote.market,
+            "type": quote.type.value if hasattr(quote.type, 'value') else quote.type,
+            "high": quote.high,
+            "low": quote.low,
+            "volume": quote.volume,
+        }
 
     async def _fetch_sina(self, asset: Asset) -> Optional[Quote]:
         if asset.type == AssetType.FUND:
@@ -268,14 +292,30 @@ class QuoteService:
     async def fetch_all(self, assets: List[Asset]) -> List[Quote]:
         import asyncio
 
-        global_assets = [a for a in assets if a.market == Market.GLOBAL]
-        cn_assets = [a for a in assets if a.market == Market.CN]
-        hk_assets = [a for a in assets if a.market == Market.HK]
-        other_assets = [
-            a for a in assets if a.market not in [Market.GLOBAL, Market.CN, Market.HK]
-        ]
-
         quotes = []
+        remaining_assets = []
+        
+        # 先检查缓存
+        for asset in assets:
+            cache_key = f"quote:{asset.code}"
+
+            cached = cache.get(cache_key)
+            if cached:
+                quotes.append(Quote(**cached))
+            else:
+                remaining_assets.append(asset)
+        
+        # 如果全部命中缓存，直接返回
+        if not remaining_assets:
+            return quotes
+        
+        # 对未命中缓存的资产进行分类
+        global_assets = [a for a in remaining_assets if a.market == Market.GLOBAL]
+        cn_assets = [a for a in remaining_assets if a.market == Market.CN]
+        hk_assets = [a for a in remaining_assets if a.market == Market.HK]
+        other_assets = [
+            a for a in remaining_assets if a.market not in [Market.GLOBAL, Market.CN, Market.HK]
+        ]
 
         if global_assets:
             secids = [
@@ -359,6 +399,10 @@ class QuoteService:
                     else None,
                 )
             )
+            
+            # 存入缓存
+            cache_key = f"quote:{asset.code}"
+            cache.set(cache_key, self._quote_to_dict(quotes[-1]), config.cache.quote_ttl)
 
         return quotes
 
