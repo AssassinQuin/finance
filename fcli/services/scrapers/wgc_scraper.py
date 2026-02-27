@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Optional
 import openpyxl
 
 from .base import BaseScraper, ScraperResult
-from ...core.database import GoldReserve
+from ...core.models import GoldReserve
 from ...infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
@@ -297,7 +297,7 @@ class WGCScraper(BaseScraper):
                 try:
                     import os
                     os.unlink(tmp_path)
-                except:
-                    pass
+                except OSError:
+                    pass  # Ignore temp file cleanup errors
         
         return results

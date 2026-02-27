@@ -1,210 +1,321 @@
 """
-Save all official gold reserve history to database.
+Save gold reserves history to database using IMF SDMX 3.0 API.
 
-Fetches historical data from:
-1. Local WGC JSON file (gold_reserves_history.json) - Top 20 countries
-2. SAFE official data - China monthly data
+Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
+
+Usage:
+    python -m fcli.scripts.save_gold_reserves
+    python -m fcli.scripts.save_gold_reserves --countries USA,CHN,DEU
+    python -m fcli.scripts.save_gold_reserves --years 5
+    python -m fcli.scripts.save_gold_reserves --latest  # 仅获取最新一个月
 """
 
 import asyncio
-import json
-from datetime import datetime
+import argparse
+import logging
+import sys
+from datetime import datetime, date
 from pathlib import Path
+from typing import Optional
+
+# 支持直接运行脚本： 自动添加项目根目录到 sys.path
+_script_dir = Path(__file__).resolve().parent.parent
+_project_root = _script_dir.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 from fcli.core.config import config
-from fcli.core.database import Database, GoldReserveStore, GoldReserve
-from fcli.services.scrapers.safe_scraper import SAFEScraper
+from fcli.core.database import Database
+from fcli.core.models import GoldReserve
+from fcli.core.stores import GoldReserveStore
+from fcli.services.scrapers.imf_scraper import IMFScraper
+from fcli.infra.http_client import http_client
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
-# Local data file path
-LOCAL_DATA_FILE = Path(__file__).parent.parent.parent / "data" / "gold_reserves_history.json"
+# 黄金价格用于USD转换为吨数 (从配置获取)
+GRAMS_PER_OUNCE = 31.1035
 
 
-async def save_wgc_history():
-    """Save WGC historical data from local JSON file."""
+def _get_gold_price() -> float:
+    """获取黄金价格配置"""
+    return config.gold.price_usd_per_ounce
+
+
+def usd_to_tonnes(usd_millions: float, gold_price: float | None = None) -> float:
+    """
+    将百万美元黄金储备转换为吨数
     
-    if not LOCAL_DATA_FILE.exists():
-        print(f"Local data file not found: {LOCAL_DATA_FILE}")
+    Args:
+        usd_millions: 黄金储备价值 (百万美元)
+        gold_price: 黄金价格 (美元/盎司)
+    
+    Returns:
+        黄金储备 (吨)
+    """
+    if not usd_millions or usd_millions <= 0:
+        return 0.0
+    
+    # 百万美元 -> 美元
+    usd = usd_millions * 1_000_000
+    
+    # 美元 -> 盎司
+    if gold_price is None:
+        gold_price = _get_gold_price()
+    ounces = usd / gold_price
+    
+    # 盎司 -> 克 -> 吨
+    grams = ounces * GRAMS_PER_OUNCE
+    tonnes = grams / 1_000_000
+    
+    return round(tonnes, 2)
+
+
+async def save_latest_reserves(
+    scraper: IMFScraper,
+    country_codes: Optional[list[str]] = None
+) -> int:
+    """
+    保存各国最新一个月的黄金储备
+    
+    Args:
+        scraper: IMF爬虫实例
+        country_codes: 国家代码列表
+    
+    Returns:
+        保存的记录数
+    """
+    logger.info("Fetching latest gold reserves for all countries...")
+    
+    results = await scraper.batch_get_latest_reserves(country_codes)
+    
+    if not results:
+        logger.warning("No data fetched")
         return 0
     
-    try:
-        with open(LOCAL_DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"Failed to load local data: {e}")
-        return 0
-    
-    reserves_data = data.get("reserves", {})
-    print(f"Found {len(reserves_data)} countries in local data")
-    
-    fetch_time = datetime.now()
     reserves = []
+    fetch_time = datetime.now()
     
-    for country_code, country_data in reserves_data.items():
-        country_name = country_data.get("country_name", country_code)
-        percent_of_reserves = country_data.get("percent_of_reserves")
-        history = country_data.get("history", [])
-        
-        for item in history:
+    for item in results:
+        period = item.get("period", "")
+        report_date = date.today()
+        if period:
             try:
-                date_str = item.get("date", "")
-                amount = float(item.get("amount", 0))
-                
-                if not date_str or amount <= 0:
-                    continue
-                
-                # Parse date from "YYYY-MM" format
-                report_date = datetime.strptime(date_str, "%Y-%m").date()
-                
-                reserve = GoldReserve(
-                    country_code=country_code,
-                    country_name=country_name,
-                    amount_tonnes=amount,
-                    percent_of_reserves=percent_of_reserves,
-                    report_date=report_date,
-                    data_source="WGC",
-                    fetch_time=fetch_time,
-                )
-                reserves.append(reserve)
-            except Exception as e:
-                print(f"Failed to parse {country_code} {item}: {e}")
-                continue
+                # period格式: YYYY-MM
+                report_date = datetime.strptime(period, "%Y-%m").date()
+            except (ValueError, TypeError):
+                pass
+        
+        value = item.get("value", 0)
+        # IMF scraper returns tonnes directly, no conversion needed
+        tonnes = value if value else 0.0
+        reserve = GoldReserve(
+            country_code=item["country_code"],
+            country_name=item.get("country_name", item["country_code"]),
+            amount_tonnes=tonnes,
+            percent_of_reserves=None,
+            report_date=report_date,
+            data_source="IMF",
+            fetch_time=fetch_time,
+        )
+        reserves.append(reserve)
     
-    if not reserves:
-        print("No WGC records to save")
-        return 0
-    
-    # Save to database
     saved = await GoldReserveStore.save_batch(reserves)
-    print(f"Saved {saved} WGC records")
+    logger.info(f"Saved {saved} latest reserve records")
+    
     return saved
 
 
-async def save_safe_history():
-    """Save China gold reserve history from SAFE official source."""
+async def save_history_reserves(
+    scraper: IMFScraper,
+    country_codes: Optional[list[str]] = None,
+    years: int = 10
+) -> int:
+    """
+    保存各国近N年的月度黄金储备历史
     
-    print("Fetching China gold reserve history from SAFE...")
-    scraper = SAFEScraper()
-    result = await scraper.fetch()
+    Args:
+        scraper: IMF爬虫实例
+        country_codes: 国家代码列表
+        years: 年数
     
-    if not result or not result.get("data"):
-        print("No data fetched from SAFE")
+    Returns:
+        保存的记录数
+    """
+    logger.info(f"Fetching {years} years of gold reserves history...")
+    
+    results = await scraper.batch_get_history(country_codes, years)
+    
+    if not results:
+        logger.warning("No data fetched")
         return 0
     
-    print(f"Fetched {len(result['data'])} records from SAFE")
-    
+    all_reserves = []
     fetch_time = datetime.now()
-    reserves = []
     
-    for item in result["data"]:
-        try:
-            date_str = item.get("date", "")
-            report_date = datetime.strptime(date_str, "%Y-%m").date()
+    for country_data in results:
+        country_code = country_data.get("country_code")
+        country_name = country_data.get("country_name", country_code)
+        data = country_data.get("data", {})
+        
+        print(f"  Processing {country_code}: {len(data)} periods in data")
+        
+        if not data:
+            print(f"    WARNING: No data for {country_code}")
+            continue
+        
+        for period, value_usd in data.items():
+            # 解析多种period格式: "2024", "2024-M01", "2024-01", "2024-Q1"
+            try:
+                if "-M" in period:
+                    # 月度格式: 2024-M01 -> 2024-01
+                    parts = period.split("-M")
+                    report_date = datetime(int(parts[0]), int(parts[1]), 1).date()
+                elif "-Q" in period:
+                    # 季度格式: 2024-Q1 -> 季度末
+                    parts = period.split("-Q")
+                    quarter = int(parts[1])
+                    month = quarter * 3
+                    report_date = datetime(int(parts[0]), month, 1).date()
+                elif len(period) == 7 and "-" in period:
+                    # 已转换的月度格式: 2025-02 -> date
+                    year, month = period.split("-")
+                    report_date = datetime(int(year), int(month), 1).date()
+                else:
+                    # 年度格式: 2024 -> 年末
+                    report_date = datetime(int(period), 12, 1).date()
+            except (ValueError, TypeError, IndexError) as e:
+                print(f"    Skipping invalid period: {period} ({e})")
+                continue
+            # IMF scraper returns tonnes directly, no conversion needed
+            tonnes = value_usd if value_usd else 0.0
             
             reserve = GoldReserve(
-                country_code=item["country_code"],
-                country_name=item["country_name"],
-                amount_tonnes=float(item["amount"]),
+                country_code=country_code,
+                country_name=country_name,
+                amount_tonnes=tonnes,
                 percent_of_reserves=None,
                 report_date=report_date,
-                data_source="SAFE",
+                data_source="IMF",
                 fetch_time=fetch_time,
             )
-            reserves.append(reserve)
-        except Exception as e:
-            print(f"Failed to parse SAFE item {item}: {e}")
-            continue
+            all_reserves.append(reserve)
     
-    if not reserves:
-        print("No SAFE records to save")
+    print(f"Total reserves created: {len(all_reserves)}")
+    
+    if not all_reserves:
+        logger.warning("No valid reserve records to save")
         return 0
     
-    saved = await GoldReserveStore.save_batch(reserves)
-    print(f"Saved {saved} SAFE records")
-    return saved
-
-
-async def save_all_gold_reserves():
-    """Save all official gold reserve history to database."""
+    logger.info(f"Total {len(all_reserves)} records to save...")
     
-    # Initialize database
-    success = await Database.init(config)
-    if not success:
-        print("Database connection failed")
-        return False
+    # 分批保存，每批500条
+    batch_size = 500
+    total_saved = 0
     
-    try:
-        total_saved = 0
-        
-        # 1. Save WGC historical data
-        print("\n=== Saving WGC historical data ===")
-        wgc_saved = await save_wgc_history()
-        total_saved += wgc_saved
-        
-        # 2. Save SAFE (China) data - will override WGC China data for overlapping months
-        print("\n=== Saving SAFE (China) data ===")
-        safe_saved = await save_safe_history()
-        total_saved += safe_saved
-        
-        print(f"\n=== Total: {total_saved} records saved ===")
-        return True
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        return False
-    finally:
-        await Database.close()
+    for i in range(0, len(all_reserves), batch_size):
+        batch = all_reserves[i:i + batch_size]
+        saved = await GoldReserveStore.save_batch(batch)
+        total_saved += saved
+        logger.info(f"Saved batch {i // batch_size + 1}: {saved} records")
+    
+    logger.info(f"Total saved: {total_saved} history records")
+    
+    return total_saved
 
 
 async def verify_data():
-    """Verify saved data."""
+    """验证保存的数据"""
+    logger.info("Verifying saved data...")
     
-    success = await Database.init(config)
-    if not success:
-        print("Database connection failed")
-        return
-    
-    try:
-        # Get all countries with data
-        pool = Database.get_pool()
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("""
-                    SELECT country_code, country_name, data_source, 
-                           COUNT(*) as records, 
-                           MIN(report_date) as min_date, 
-                           MAX(report_date) as max_date
-                    FROM gold_reserves
-                    GROUP BY country_code, country_name, data_source
-                    ORDER BY MAX(report_date) DESC
-                """)
-                rows = await cur.fetchall()
-                
-                print(f"\n{'国家':<15} {'代码':<5} {'来源':<10} {'记录数':<8} {'最早日期':<12} {'最新日期'}")
-                print("-" * 75)
-                
+    pool = Database.get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # 按国家统计
+            await cur.execute("""
+                SELECT country_code, country_name, data_source, 
+                       COUNT(*) as records, 
+                       MIN(report_date) as min_date, 
+                       MAX(report_date) as max_date,
+                       (SELECT amount_tonnes FROM gold_reserves gr2 
+                       WHERE gr2.country_code = gr1.country_code 
+                       AND gr2.data_source = 'IMF'
+                       ORDER BY report_date DESC LIMIT 1) as latest_amount
+                       FROM gold_reserves gr1
+                       WHERE data_source = 'IMF'
+                       GROUP BY country_code, country_name, data_source
+                       ORDER BY latest_amount DESC
+                       LIMIT 30
+            """)
+            rows = await cur.fetchall()
+            
+            if rows:
+                print(f"\n{'国家':<20} {'记录数':<8} {'最早':<12} {'最新':<12} {'最新储量(吨)':<15}")
+                print("-" * 70)
                 for row in rows:
-                    country_code, country_name, source, count, min_date, max_date = row
-                    print(f"{country_name:<15} {country_code:<5} {source:<10} {count:<8} {min_date} {max_date}")
+                    code, name, source, count, min_date, max_date, amount = row
+                    name_display = name[:18] if name else code
+                    amount_str = f"{amount:.2f}" if amount else "N/A"
+                    print(f"{name_display:<20} {count:<8} {min_date} {max_date} {amount_str:<15}")
                 
-                print(f"\n总计: {len(rows)} 个国家/来源组合")
-                
-    finally:
-        await Database.close()
+                print(f"\n共 {len(rows)} 个国家/地区")
+            else:
+                print("No IMF data found")
 
 
 async def main():
-    import sys
+    parser = argparse.ArgumentParser(description="Save gold reserves from IMF API")
+    parser.add_argument(
+        "--countries", 
+        type=str, 
+        help="Comma-separated country codes (e.g., USA,CHN,DEU)"
+    )
+    parser.add_argument(
+        "--years", 
+        type=int, 
+        default=10,
+        help="Years of history to fetch (default: 10)"
+    )
+    parser.add_argument(
+        "--latest",
+        action="store_true",
+        help="Only fetch latest month data"
+    )
+    args = parser.parse_args()
     
-    if len(sys.argv) > 1 and sys.argv[1] == "--verify":
-        await verify_data()
-    else:
-        success = await save_all_gold_reserves()
-        if success:
-            print("\n✅ All gold reserve history saved to database")
-            print("\nRun 'python -m fcli.scripts.save_gold_reserves --verify' to verify")
+    # 解析国家代码
+    country_codes = None
+    if args.countries:
+        country_codes = [c.strip().upper() for c in args.countries.split(",")]
+    
+    # 初始化数据库
+    success = await Database.init(config)
+    if not success:
+        logger.error("Database connection failed")
+        return
+    
+    try:
+        scraper = IMFScraper()
+        
+        if args.latest:
+            saved = await save_latest_reserves(scraper, country_codes)
         else:
-            print("\n❌ Failed to save gold reserve history")
+            saved = await save_history_reserves(scraper, country_codes, args.years)
+        
+        if saved > 0:
+            await verify_data()
+        else:
+            logger.warning("No data saved")
+        
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise
+    finally:
+        await scraper.close()
+        await Database.close()
+        await http_client.close()
 
 
 if __name__ == "__main__":

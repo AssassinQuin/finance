@@ -1,10 +1,13 @@
 ﻿from typing import List, Optional, Dict, Any
 from datetime import datetime
 import re
+import logging
 from ..core.models import Quote, Asset, Market, AssetType
 from ..core.config import config
 from ..core.cache import cache
 from ..infra.http_client import http_client
+
+logger = logging.getLogger(__name__)
 
 
 class QuoteService:
@@ -79,7 +82,8 @@ class QuoteService:
 
         try:
             data = eval(match.group(1))
-        except:
+        except (SyntaxError, NameError, TypeError) as e:
+            logger.debug(f"Failed to parse gz data: {e}")
             return None
 
         if not data or not data.get("gsz"):

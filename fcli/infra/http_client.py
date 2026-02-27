@@ -1,8 +1,10 @@
-﻿import aiohttp
+import aiohttp
 import asyncio
+import json
 import logging
 from typing import Optional, Dict, Any
 
+from ..core.config import config
 logger = logging.getLogger(__name__)
 
 
@@ -19,7 +21,12 @@ class HttpClient:
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
             }
-            self.session = aiohttp.ClientSession(headers=headers)
+            connector = aiohttp.TCPConnector(ssl=False)
+            self.session = aiohttp.ClientSession(
+                headers=headers,
+                connector=connector,
+                trust_env=True  # 支持环境变量代理
+            )
         return self.session
     
     async def fetch(
@@ -28,9 +35,15 @@ class HttpClient:
         params: Optional[Dict] = None, 
         text_mode: bool = False,
         binary_mode: bool = False,
-        follow_redirects: bool = True
+        follow_redirects: bool = True,
+        use_proxy: bool = True
     ) -> Any:
         session = await self.get_session()
+        
+        # 配置代理
+        proxy = None
+        if use_proxy and config.proxy.enabled:
+            proxy = config.proxy.http
         
         for attempt in range(self.max_retries):
             try:
@@ -39,7 +52,8 @@ class HttpClient:
                     url, 
                     params=params, 
                     timeout=timeout,
-                    allow_redirects=follow_redirects
+                    allow_redirects=follow_redirects,
+                    proxy=proxy
                 ) as response:
                     if binary_mode:
                         return await response.read()
@@ -47,7 +61,8 @@ class HttpClient:
                         return await response.text()
                     try:
                         return await response.json()
-                    except:
+                    except (json.JSONDecodeError, aiohttp.ContentTypeError):
+                        # Response is not JSON, return as text
                         return await response.text()
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout on attempt {attempt + 1}/{self.max_retries}: {url}")

@@ -1,65 +1,59 @@
-import json
-from pathlib import Path
+"""Storage layer - database only."""
+
 from typing import List, Optional
 
 from .config import config
+from .database import Database
 from .models import Asset
+from .stores import WatchlistAssetStore
 
 
 class Storage:
-    def __init__(self):
-        self.file_path = config.data_dir / "assets.json"
-        self._ensure_file()
+    """Database-only storage for watchlist assets."""
 
-    def _ensure_file(self):
-        if not config.data_dir.exists():
-            config.data_dir.mkdir(parents=True)
-        if not self.file_path.exists():
-            with open(self.file_path, "w") as f:
-                json.dump([], f)
+    _initialized = False
 
-    def load(self) -> List[Asset]:
-        with open(self.file_path, "r") as f:
-            data = json.load(f)
-            return [Asset(**item) for item in data]
+    async def _ensure_db(self):
+        """Ensure database is initialized."""
+        if not Storage._initialized:
+            await Database.init(config)
+            Storage._initialized = True
 
-    def save(self, assets: List[Asset]):
-        with open(self.file_path, "w") as f:
-            # Sort by added_at
-            assets.sort(key=lambda x: x.added_at)
-            json.dump(
-                [asset.model_dump(mode="json") for asset in assets],
-                f,
-                indent=2,
-                ensure_ascii=False,
-            )
+    async def load(self) -> List[Asset]:
+        """Load all active assets from database."""
+        await self._ensure_db()
+        if not Database.is_enabled():
+            return []
+        return await WatchlistAssetStore.get_assets()
 
-    def add(self, asset: Asset):
-        assets = self.load()
-        # Check if exists (by code)
-        for i, a in enumerate(assets):
-            if a.code == asset.code:
-                assets[i] = asset  # Update
-                self.save(assets)
-                return
-        assets.append(asset)
-        self.save(assets)
+    async def save(self, assets: List[Asset]):
+        """Save assets to database."""
+        await self._ensure_db()
+        if not Database.is_enabled():
+            return
+        for asset in assets:
+            await WatchlistAssetStore.add(asset)
 
-    def remove(self, code: str) -> bool:
-        assets = self.load()
-        initial_len = len(assets)
-        assets = [a for a in assets if a.code != code]
-        if len(assets) < initial_len:
-            self.save(assets)
-            return True
-        return False
+    async def add(self, asset: Asset) -> bool:
+        """Add asset to watchlist."""
+        await self._ensure_db()
+        if not Database.is_enabled():
+            return False
+        return await WatchlistAssetStore.add(asset)
 
-    def get(self, code: str) -> Optional[Asset]:
-        assets = self.load()
-        for a in assets:
-            if a.code == code:
-                return a
-        return None
+    async def remove(self, code: str) -> bool:
+        """Remove asset from watchlist."""
+        await self._ensure_db()
+        if not Database.is_enabled():
+            return False
+        return await WatchlistAssetStore.remove(code)
+
+    async def get(self, code: str) -> Optional[Asset]:
+        """Get asset by code."""
+        await self._ensure_db()
+        if not Database.is_enabled():
+            return None
+        return await WatchlistAssetStore.get_by_code(code)
 
 
 storage = Storage()

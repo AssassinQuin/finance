@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Optional
 from io import BytesIO
 
 from .base import BaseScraper
-from ...core.database import GoldReserve
+from ...core.models import GoldReserve
 from ...infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,12 @@ class SAFEScraper(BaseScraper):
     转换公式: 1万盎司 = 0.311035吨
     """
     
-    # 万盎司转吨
-    WAN_OZ_TO_TONNE = 0.311035
+    # 万盎司转吨 (从配置获取)
+    @property
+    def WAN_OZ_TO_TONNE(self) -> float:
+        from ...core.config import config
+        return config.gold.wan_oz_to_tonne
+
     BASE_URL = "https://www.safe.gov.cn"
     INDEX_URL = "https://www.safe.gov.cn/safe/whcb/index.html"
     

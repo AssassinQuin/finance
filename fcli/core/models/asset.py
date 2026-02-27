@@ -1,25 +1,15 @@
-﻿from enum import Enum
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+"""Asset and Quote models."""
+
 from datetime import datetime
+from typing import Optional, Dict, Any
 
-class Market(str, Enum):
-    CN = "CN"     # A-share
-    HK = "HK"     # Hong Kong
-    US = "US"     # US Stocks
-    FUND = "FUND" # China Funds
-    GLOBAL = "GLOBAL" # Global Indices/Forex
-    FOREX = "FOREX"
-    BOND = "BOND"
+from pydantic import BaseModel, Field
 
-class AssetType(str, Enum):
-    STOCK = "STOCK"
-    FUND = "FUND"
-    INDEX = "INDEX"
-    FOREX = "FOREX"
-    BOND = "BOND"
+from .base import Market, AssetType
+
 
 class Asset(BaseModel):
+    """User's watchlist asset."""
     code: str = Field(..., description="User facing code, e.g., SP500, 000218")
     api_code: str = Field(..., description="API parameter, e.g., gb_$spx")
     name: str
@@ -33,7 +23,9 @@ class Asset(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
+
 class Quote(BaseModel):
+    """Real-time quote data."""
     code: str
     name: str
     price: float
@@ -47,7 +39,9 @@ class Quote(BaseModel):
     volume: Optional[str] = None
     extra: Dict[str, Any] = Field(default_factory=dict)
 
+
 class ExchangeRate(BaseModel):
+    """Exchange rate data."""
     base_currency: str = Field(..., description="Base currency code, e.g., USD")
     quote_currency: str = Field(..., description="Quote currency code, e.g., CNY")
     rate: float = Field(..., description="Exchange rate")

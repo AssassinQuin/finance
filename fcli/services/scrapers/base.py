@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 
-from ...core.database import GoldReserve
+from ...core.models import GoldReserve
 
 
 @dataclass

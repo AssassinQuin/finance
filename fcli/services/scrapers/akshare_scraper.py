@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 
 from .base import BaseScraper, ScraperResult
-from ...core.database import GoldReserve
+from ...core.models import GoldReserve
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +73,9 @@ class AkShareScraper(BaseScraper):
                     if not parsed_date:
                         continue
                     
-                    # 万盎司转换为吨 (1盎司 = 0.0311035克, 1万盎司 = 0.311035吨)
-                    amount_tonnes = float(gold_reserves) * 0.311035
-                    
+                    # 万盎司转换为吨 (从配置读取转换系数)
+                    from fcli.core.config import config
+                    amount_tonnes = float(gold_reserves) * config.gold.wan_oz_to_tonne
                     all_data.append({
                         "country_code": "CHN",
                         "country_name": "中国",

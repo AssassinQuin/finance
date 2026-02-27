@@ -1,495 +1,422 @@
-"""
-Gold reserve service - refactored to use modular scrapers.
-Supports multiple data sources: WGC, IMF, and direct central bank scrapers.
+﻿"""
+Gold reserve service - IMF SDMX 3.0 API only.
+
+Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
 """
 
-import json
-import time
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
 from ..core.config import config
-from ..core.database import (
-    Database,
-    GoldReserve,
-    GoldReserveStore,
-    CentralBankSchedule,
-    CentralBankScheduleStore,
-    FetchLog,
-    FetchLogStore,
-)
-from .scrapers import WGCScraper, IMFScraper, AkShareScraper, SAFEScraper, ScraperResult
-from .scrapers.central_bank import get_scraper, get_supported_countries
+from ..core.database import Database
+from ..core.models import GoldReserve
+from ..core.stores import GoldReserveStore
+from .scrapers.imf_scraper import IMFScraper, GOLD_COUNTRY_CODES
 
 logger = logging.getLogger(__name__)
-
-# Top 20 gold-holding countries
-TOP_20_COUNTRIES = [
-    {"code": "USA", "name": "美国"},
-    {"code": "DEU", "name": "德国"},
-    {"code": "ITA", "name": "意大利"},
-    {"code": "FRA", "name": "法国"},
-    {"code": "RUS", "name": "俄罗斯"},
-    {"code": "CHN", "name": "中国"},
-    {"code": "CHE", "name": "瑞士"},
-    {"code": "JPN", "name": "日本"},
-    {"code": "IND", "name": "印度"},
-    {"code": "NLD", "name": "荷兰"},
-    {"code": "TUR", "name": "土耳其"},
-    {"code": "PRT", "name": "葡萄牙"},
-
-    {"code": "UZB", "name": "乌兹别克斯坦"},
-    {"code": "SAU", "name": "沙特阿拉伯"},
-    {"code": "GBR", "name": "英国"},
-    {"code": "KAZ", "name": "哈萨克斯坦"},
-    {"code": "ESP", "name": "西班牙"},
-    {"code": "AUT", "name": "奥地利"},
-    {"code": "THA", "name": "泰国"},
-    {"code": "SGP", "name": "新加坡"},
-]
-
-# Default fallback data (static)
-DEFAULT_RESERVES = [
-    {"code": "USA", "country": "美国", "amount": 8133.5, "percent": 67.9},
-    {"code": "DEU", "country": "德国", "amount": 3351.6, "percent": 67.9},
-    {"code": "ITA", "country": "意大利", "amount": 2451.9, "percent": 58.6},
-    {"code": "FRA", "country": "法国", "amount": 2437.0, "percent": 58.9},
-    {"code": "RUS", "country": "俄罗斯", "amount": 2333.1, "percent": 24.0},
-    {"code": "CHN", "country": "中国", "amount": 2279.6, "percent": 4.3},
-    {"code": "CHE", "country": "瑞士", "amount": 1039.9, "percent": 5.2},
-    {"code": "JPN", "country": "日本", "amount": 846.0, "percent": 2.5},
-    {"code": "IND", "country": "印度", "amount": 876.2, "percent": 8.0},
-    {"code": "NLD", "country": "荷兰", "amount": 612.5, "percent": 56.0},
-    {"code": "TUR", "country": "土耳其", "amount": 379.1, "percent": 28.0},
-    {"code": "PRT", "country": "葡萄牙", "amount": 382.5, "percent": 56.0},
-    {"code": "UZB", "country": "乌兹别克斯坦", "amount": 335.9, "percent": 60.0},
-    {"code": "SAU", "country": "沙特阿拉伯", "amount": 323.1, "percent": 3.0},
-    {"code": "GBR", "country": "英国", "amount": 310.3, "percent": 8.0},
-    {"code": "KAZ", "country": "哈萨克斯坦", "amount": 385.5, "percent": 35.0},
-    {"code": "ESP", "country": "西班牙", "amount": 281.6, "percent": 17.0},
-    {"code": "AUT", "country": "奥地利", "amount": 280.0, "percent": 55.0},
-    {"code": "THA", "country": "泰国", "amount": 154.0, "percent": 6.0},
-    {"code": "SGP", "country": "新加坡", "amount": 127.4, "percent": 4.0},
-]
 
 
 class GoldService:
     """
-    Gold reserve service with multi-source data fetching.
+    Gold reserve service using IMF SDMX 3.0 API.
     
-    Data source priority (configurable):
-    1. WGC Excel (World Gold Council) - Primary source with monthly changes
-    2. IMF SDMX API - Validation and backup
-    3. Central Bank direct scrapers - Country-specific validation
+    Data source: IMF IRFCL dataset
+    - Gold reserves in USD (converted to tonnes)
+    - Monthly data for 40+ countries
+    - 10+ years of history
     """
     
     def __init__(self):
-        self.data_file = config.data_dir / "gold_stats.json"
-        self._local_data: Dict[str, Any] = {}
-        self._load_local_data()
-        
-        # Initialize scrapers
-        self._wgc_scraper = WGCScraper()
         self._imf_scraper = IMFScraper()
-        self._akshare_scraper = AkShareScraper()
-        self._safe_scraper = SAFEScraper()
-
-    def _load_local_data(self):
-        """Load cached data from local JSON file"""
-        if self.data_file.exists():
-            try:
-                with open(self.data_file, "r", encoding="utf-8") as f:
-                    self._local_data = json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
-                self._local_data = {}
-
-    def _save_local_data(self):
-
-        """Save data to local JSON file"""
-        self.data_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.data_file, "w", encoding="utf-8") as f:
-            json.dump(self._local_data, f, indent=2, ensure_ascii=False)
     
     async def init_database(self) -> bool:
         """Initialize database connection"""
         return await Database.init(config)
     
-    def _should_update(
-        self, country_code: str, schedule: Optional[CentralBankSchedule]
-    ) -> bool:
-        """Check if data should be updated based on release schedule"""
-        if not schedule or not schedule.release_day:
-            return True
-        
-        today = datetime.now()
-        release_day = schedule.release_day
-        
-        if today.day >= release_day:
-            expected_date = today.replace(day=release_day)
-            if not Database.is_enabled():
-                local_latest = self._local_data.get("reserves", [])
-                for r in local_latest:
-                    if r.get("code") == country_code:
-                        try:
-                            latest_date = datetime.strptime(
-                                r.get("date", "2000-01"), "%Y-%m"
-                            )
-                            if latest_date.date() >= expected_date.date():
-                                return False
-                        except ValueError:
-                            pass
-                return True
-        return False
+    async def close(self):
+        """Close HTTP client session"""
+        if self._imf_scraper:
+            await self._imf_scraper.close()
     
-    async def _fetch_from_wgc(self) -> List[Dict]:
-        """Fetch data from WGC using the new scraper"""
-        logger.info("Fetching gold reserves from WGC...")
-        result: ScraperResult = await self._wgc_scraper.scrape()
-        
-        if result.success and result.data:
-            return [
-                {
-                    "country": r.country_name,
-                    "code": r.country_code,
-                    "amount": r.amount_tonnes,
-                    "percent_of_reserves": r.percent_of_reserves,
-                    "date": r.report_date.strftime("%Y-%m"),
-                    "source": "WGC",
-                }
-                for r in result.data
-            ]
-        
-        logger.warning(f"WGC fetch failed: {result.error_message}")
-        return []
-    
-    async def _fetch_from_imf(self) -> List[Dict]:
-        """Fetch data from IMF using the new scraper"""
-        logger.info("Fetching gold reserves from IMF...")
-        result: ScraperResult = await self._imf_scraper.scrape()
-        
-        if result.success and result.data:
-            return [
-                {
-                    "country": r.country_name,
-                    "code": r.country_code,
-                    "amount": r.amount_tonnes,
-                    "percent_of_reserves": r.percent_of_reserves,
-                    "date": r.report_date.strftime("%Y-%m"),
-                    "source": "IMF",
-                }
-                for r in result.data
-            ]
-        
-        logger.warning(f"IMF fetch failed: {result.error_message}")
-        return []
-    
-    async def _fetch_from_central_bank(self, country_code: str) -> Optional[Dict]:
-        """Fetch data from a specific central bank"""
-        scraper_class = get_scraper(country_code)
-        if not scraper_class:
-            return None
-        
-        try:
-            scraper = scraper_class()
-            result: ScraperResult = await scraper.scrape()
-            
-            if result.success and result.data:
-                r = result.data[0]  # Take first result
-                return {
-                    "country": r.country_name,
-                    "code": r.country_code,
-                    "amount": r.amount_tonnes,
-                    "percent_of_reserves": r.percent_of_reserves,
-                    "date": r.report_date.strftime("%Y-%m"),
-                    "source": f"CB_{country_code}",
-                }
-        except Exception as e:
-            logger.warning(f"Central bank scraper for {country_code} failed: {e}")
-        
-        return None
-    
-    async def _fetch_from_akshare(self) -> List[Dict]:
-        """Fetch China gold reserves history from AkShare (online)"""
-        logger.info("Fetching China gold reserves from AkShare...")
-        result: ScraperResult = await self._akshare_scraper.scrape()
-        
-        if result.success and result.data:
-            return [
-                {
-                    "country": r.country_name,
-                    "code": r.country_code,
-                    "amount": r.amount_tonnes,
-                    "percent_of_reserves": r.percent_of_reserves,
-                    "date": r.report_date.strftime("%Y-%m"),
-                    "source": "AkShare",
-                }
-                for r in result.data
-            ]
-        
-        logger.warning(f"AkShare fetch failed: {result.error_message}")
-        return []
-    
-
-        """Get default fallback data"""
-        current_month = datetime.now().strftime("%Y-%m")
-        return [
-            {
-                "country": r["country"],
-                "code": r["code"],
-                "amount": r["amount"],
-                "percent_of_reserves": r["percent"],
-                "date": current_month,
-                "source": "DEFAULT",
-            }
-            for r in DEFAULT_RESERVES
-        ]
-    
-    async def fetch_all_with_auto_update(self, force: bool = False) -> List[Dict]:
+    async def _check_and_update_stale_data(self, country_codes: Optional[List[str]] = None) -> None:
         """
-        Fetch gold reserves with automatic update detection.
+        检查并更新过期的数据。
+        
+        如果某个国家的数据不是最新上一个月的，自动从 IMF 更新。
+        """
+        if not Database.is_enabled():
+            return
+        
+        from datetime import date
+        from dateutil.relativedelta import relativedelta
+        
+        # 计算上个月的日期（目标日期）
+        today = date.today()
+        last_month = today - relativedelta(months=1)
+        target_date = date(last_month.year, last_month.month, 1)
+        
+        # 获取所有国家的最新数据日期
+        latest_dates = await GoldReserveStore.get_all_latest_dates()
+        
+        # 找出需要更新的国家
+        countries_to_update = []
+        
+        if country_codes:
+            # 检查指定的国家
+            for code in country_codes:
+                code_upper = code.upper()
+                if code_upper not in latest_dates:
+                    # 数据库中没有这个国家的数据
+                    countries_to_update.append(code_upper)
+                elif latest_dates[code_upper] < target_date:
+                    # 数据不是上个月的
+                    countries_to_update.append(code_upper)
+        else:
+            # 检查所有支持的国家
+            for code in GOLD_COUNTRY_CODES.keys():
+                if code not in latest_dates:
+                    countries_to_update.append(code)
+                elif latest_dates[code] < target_date:
+                    countries_to_update.append(code)
+        
+        if countries_to_update:
+            logger.info(f"Auto-updating {len(countries_to_update)} countries with stale data...")
+            # 只获取最新数据（1个月）
+            await self.save_to_database(
+                country_codes=countries_to_update,
+                years=1
+            )
+    
+    async def get_latest(self, country_codes: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Get latest gold reserves for countries.
+        
+        自动检查并更新过期数据：
+        - 如果数据库中没有该国家数据，自动获取
+        - 如果数据不是最新上一个月的，自动更新
         
         Args:
-            force: Force update regardless of schedule
-            
+            country_codes: List of ISO 3-letter country codes (optional)
+        
         Returns:
-            List of gold reserve data with changes
+            List of latest reserve data sorted by amount descending
         """
-        start_time = time.time()
-        results = []
+        # 先检查并更新过期数据
+        await self._check_and_update_stale_data(country_codes)
         
-        # Lazy initialize database
-        if not Database.is_enabled():
-            await self.init_database()
-        
-        # Get release schedules
-        schedules = {}
+        # Try database first
         if Database.is_enabled():
             try:
-                schedule_list = await CentralBankScheduleStore.get_all_active()
-                schedules = {s.country_code: s for s in schedule_list}
+                results = await GoldReserveStore.get_latest_with_changes()
+                if results:
+                    if country_codes:
+                        results = [r for r in results if r.get("code") in country_codes]
+                    return results
             except Exception as e:
-                logger.warning(f"Failed to get schedules: {e}")
+                logger.error(f"Failed to get from database: {e}")
         
-        # Check if update is needed
-        need_fetch = force
-        if not force:
-            for country in TOP_20_COUNTRIES:
-                schedule = schedules.get(country["code"])
-                if self._should_update(country["code"], schedule):
-                    need_fetch = True
-                    break
-        
-        if need_fetch:
-            fetched_data = []
-            source_used = None
-            
-            # Try data sources in priority order
-            for source in config.source.gold_priority:
-                try:
-                    if source == "wgc":
-                        fetched_data = await self._fetch_from_wgc()
-                    elif source == "imf":
-                        fetched_data = await self._fetch_from_imf()
-                    elif source == "tradingeconomics":
-                        # TODO: Implement TradingEconomics scraper
-                        continue
-                    elif source == "central_bank":
-                        # Aggregate from all available central bank scrapers
-                        for country_code in get_supported_countries():
-                            cb_data = await self._fetch_from_central_bank(country_code)
-                            if cb_data:
-                                fetched_data.append(cb_data)
-                    
-                    if fetched_data:
-                        source_used = source
-                        logger.info(f"Successfully fetched {len(fetched_data)} records from {source}")
-                        break
-                        
-                except Exception as e:
-                    logger.error(f"Source {source} failed: {e}")
-                    if not config.source.fallback_enabled:
-                        raise
-                    continue
-            
-            # Process fetched data
-            if fetched_data:
-                if Database.is_enabled():
-                    try:
-                        reserves = [
-                            GoldReserve(
-                                country_code=d["code"],
-                                country_name=d["country"],
-                                amount_tonnes=d["amount"],
-                                percent_of_reserves=d.get("percent_of_reserves"),
-                                report_date=datetime.strptime(d["date"], "%Y-%m").date(),
-                                data_source=d["source"],
-                                fetch_time=datetime.now(),
-                            )
-                            for d in fetched_data
-                        ]
-                        await GoldReserveStore.save_batch(reserves)
-                        
-                        # Log successful fetch
-                        await FetchLogStore.log(
-                            FetchLog(
-                                data_type="gold_reserves",
-                                source=source_used or "unknown",
-                                status="success",
-                                records_count=len(fetched_data),
-                                duration_ms=int((time.time() - start_time) * 1000),
-                            )
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to save to database: {e}")
-                else:
-                    # Save to local file
-                    self._local_data["reserves"] = fetched_data
-                    self._local_data["last_update"] = datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                    self._save_local_data()
-            else:
-                # Use default data
-                logger.warning("All sources failed, using default data")
-                fetched_data = self._get_default_data()
-                if not Database.is_enabled():
-                    self._local_data["reserves"] = fetched_data
-                    self._save_local_data()
-        
-        # Get results with changes
-        if Database.is_enabled():
-            try:
-                db_results = await GoldReserveStore.get_latest_with_changes()
-                results = [
-                    {
-                        "country": r["country"],
-                        "code": r["code"],
-                        "amount": r["amount"],
-                        "percent_of_reserves": r.get("percent_of_reserves"),
-                        "date": r["date"],
-                        "source": r["source"],
-                        "change_1m": r.get("change_1m", 0.0),
-                        "change_1y": r.get("change_1y", 0.0),
-                    }
-                    for r in db_results
-                ]
-            except Exception as e:
-                logger.error(f"Failed to get results from database: {e}")
-                results = self._local_data.get("reserves", [])
-        else:
-            results = self._local_data.get("reserves", [])
-        
-        if not results:
-            results = self._get_default_data()
-        
-        return sorted(results, key=lambda x: x.get("amount", 0), reverse=True)
-    
-    async def fetch_imf_reserves(self, countries: List[str]) -> List[Dict]:
-        """Fetch IMF reserves for specific countries"""
-        return await self.fetch_all_with_auto_update()
-    
-    async def fetch_global_supply_demand(self) -> Dict:
-        """
-        Fetch global gold supply/demand data.
-        TODO: Implement scraping from WGC quarterly reports.
-        """
-        return {
-            "date": "2025 Q4",
-            "supply": {
-                "mine_production": 927.3,
-                "recycling": 288.6,
-                "net_hedging": 1.2,
-                "total": 1217.1,
-            },
-            "demand": {
-                "jewelry": 516.2,
-                "technology": 82.5,
-                "investment": 156.9,
-                "central_banks": 337.1,
-                "total": 1092.7,
-            },
-        }
-    
-    async def get_history(self, country_code: str, months: int = 24) -> List[Dict]:
+        # Fetch from IMF API
+        logger.info("Fetching latest gold reserves from IMF API...")
+        try:
+            data = await self._imf_scraper.batch_get_latest_reserves(country_codes)
+            return [
+                {
+                    "country": item.get("country_name"),
+                    "code": item.get("country_code"),
+                    "amount": item.get("value", 0),  # IMF scraper returns tonnes directly
+                    "date": item.get("period"),
+                    "source": "IMF",
+                }
+                for item in data
+            ]
+        except Exception as e:
+            logger.error(f"Failed to fetch from IMF: {e}")
+            return []
+    async def get_history(
+        self, 
+        country_code: str, 
+        months: int = 120
+    ) -> List[Dict]:
         """
         Get historical gold reserves for a country.
         
         Args:
             country_code: ISO 3-letter country code
-            months: Number of months of history to return
-            
+            months: Number of months of history (default 120 = 10 years)
+        
         Returns:
             List of historical reserve data
         """
+        # Try database first
         if Database.is_enabled():
             try:
-                history = await GoldReserveStore.get_history(country_code.upper(), months)
-                return [
-                    {
-                        "country": r.country_name,
-                        "code": r.country_code,
-                        "amount": r.amount_tonnes,
-                        "date": r.report_date.strftime("%Y-%m"),
-                        "source": r.data_source,
-                    }
-                    for r in history
-                ]
+                history = await GoldReserveStore.get_history(
+                    country_code.upper(), 
+                    months
+                )
+                if history:
+                    return [
+                        {
+                            "country": r.country_name,
+                            "code": r.country_code,
+                            "amount": r.amount_tonnes,
+                            "date": r.report_date.strftime("%Y-%m"),
+                            "source": r.data_source,
+                        }
+                        for r in history
+                    ]
             except Exception as e:
                 logger.error(f"Failed to get history from database: {e}")
         
-        # Fallback to default history data
-        default_history = [
-            {"code": "USA", "country": "美国", "amount": 8133.46, "date": "2026-01"},
-            {"code": "USA", "country": "美国", "amount": 8133.46, "date": "2025-12"},
-            {"code": "USA", "country": "美国", "amount": 8133.46, "date": "2025-11"},
-            {"code": "CHN", "country": "中国", "amount": 2264.12, "date": "2026-01"},
-            {"code": "CHN", "country": "中国", "amount": 2264.12, "date": "2025-12"},
-            {"code": "CHN", "country": "中国", "amount": 2235.39, "date": "2025-11"},
-        ]
-        return [h for h in default_history if h["code"] == country_code.upper()]
+        # Fetch from IMF API
+        logger.info(f"Fetching gold reserves history for {country_code} from IMF...")
+        try:
+            years = max(1, months // 12)
+            data = await self._imf_scraper.get_gold_reserves_history(
+                country_code.upper(), 
+                years=years
+            )
+            
+            result = [
+                {
+                    "country": data.get("country_name"),
+                    "code": data.get("country_code"),
+                    "amount": value,  # IMF scraper returns tonnes directly, no conversion needed
+                    "date": period,
+                    "source": "IMF",
+                }
+                for period, value in data.get("data", {}).items()
+            ]
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get history from IMF: {e}")
+            return []
+    async def get_all_history(self, years: int = 10) -> Dict[str, List[Dict]]:
+        """
+        Get historical gold reserves for all countries.
+        
+        Args:
+            years: Number of years of history
+        
+        Returns:
+            Dict mapping country_code to list of historical data
+        """
+        logger.info(f"Fetching {years} years of history for all countries...")
+        
+        results = await self._imf_scraper.batch_get_history(years=years)
+        
+        output = {}
+        for country_data in results:
+            code = country_data.get("country_code")
+            history = [
+                {
+                    "country": country_data.get("country_name"),
+                    "code": code,
+                    "amount": value,  # IMF scraper returns tonnes directly
+                    "date": period,
+                    "source": "IMF",
+                }
+                for period, value in country_data.get("data", {}).items()
+            ]
+            history.sort(key=lambda x: x["date"], reverse=True)
+            output[code] = history
+        
+        return output
+    
+    async def save_to_database(
+        self, 
+        country_codes: Optional[List[str]] = None,
+        years: int = 10
+    ) -> int:
+        """
+        Save gold reserves to database.
+        
+        Args:
+            country_codes: List of country codes (optional, all if not specified)
+            years: Years of history to save
+        
+        Returns:
+            Number of records saved
+        """
+        if not Database.is_enabled():
+            logger.warning("Database not enabled")
+            return 0
+        
+        logger.info(f"Fetching {years} years of history for saving...")
+        
+        results = await self._imf_scraper.batch_get_history(
+            country_codes, 
+            years=years
+        )
+        
+        reserves = []
+        fetch_time = datetime.now()
+        
+        for country_data in results:
+            code = country_data.get("country_code")
+            name = country_data.get("country_name", code)
+            
+            for period, value in country_data.get("data", {}).items():
+                try:
+                    report_date = datetime.strptime(period, "%Y-%m").date()
+                except ValueError:
+                    continue
+                
+                reserve = GoldReserve(
+                    country_code=code,
+                    country_name=name,
+                    amount_tonnes=value,  # IMF scraper returns tonnes directly
+                    percent_of_reserves=None,
+                    report_date=report_date,
+                    data_source="IMF",
+                    fetch_time=fetch_time,
+                )
+                reserves.append(reserve)
+        
+        if not reserves:
+            return 0
+        
+        saved = await GoldReserveStore.save_batch(reserves)
+        logger.info(f"Saved {saved} records to database")
+        
+        return saved
+    
+    def _usd_to_tonnes(self, usd_millions: float) -> float:
+        """
+        DEPRECATED: This function should NOT be used for IMF data.
+        
+        IMF scraper already returns values in tonnes directly.
+        This function is kept for potential future use with USD-based data sources.
+        
+        Convert gold reserves from million USD to tonnes.
+        Uses approximate gold price of $2300/oz (2024 average).
+        
+        Args:
+            usd_millions: Value in million USD
+        
+        Returns:
+            Tonnes of gold
+        """
+        if not usd_millions or usd_millions <= 0:
+            return 0.0
+        
+        GOLD_PRICE_USD_PER_OUNCE = config.gold.price_usd_per_ounce
+        GRAMS_PER_OUNCE = 31.1035
+        
+        usd = usd_millions * 1_000_000
+        ounces = usd / GOLD_PRICE_USD_PER_OUNCE
+        grams = ounces * GRAMS_PER_OUNCE
+        tonnes = grams / 1_000_000
+        
+        return round(tonnes, 2)
+    
+    def get_supported_countries(self) -> Dict[str, str]:
+        """Get list of supported country codes and names"""
+        return GOLD_COUNTRY_CODES.copy()
+
+    async def fetch_all_with_auto_update(self, force: bool = False) -> List[Dict]:
+        """
+        Fetch all countries' latest gold reserves with auto-update support.
+        
+        Uses cache/database first, fetches from API if data is stale or force=True.
+        
+        Args:
+            force: Force refresh from API
+        
+        Returns:
+            List of reserve data with change_1m and change_1y fields
+        """
+        # Try database first (has change calculations)
+        if Database.is_enabled() and not force:
+            try:
+                results = await GoldReserveStore.get_latest_with_changes()
+                if results:
+                    # Map database fields to expected format
+                    return [
+                        {
+                            "country": r.get("country"),
+                            "code": r.get("code"),
+                            "amount": r.get("amount"),
+                            "date": r.get("date"),
+                            "source": r.get("source", "IMF"),
+                            "change_1m": r.get("change_1m", 0.0),
+                            "change_1y": r.get("change_1y", 0.0),
+                        }
+                        for r in results
+                    ]
+            except Exception as e:
+                logger.error(f"Failed to get from database: {e}")
+        
+        # Fetch from IMF API
+        logger.info("Fetching latest gold reserves from IMF API...")
+        try:
+            data = await self._imf_scraper.batch_get_latest_reserves()
+            results = [
+                {
+                    "country": item.get("country_name"),
+                    "code": item.get("country_code"),
+                    "amount": item.get("value", 0),  # IMF scraper returns tonnes directly
+                    "date": item.get("period"),
+                    "source": "IMF",
+                    "change_1m": 0.0,
+                    "change_1y": 0.0,
+                }
+                for item in data
+            ]
+            return results
+        except Exception as e:
+            logger.error(f"Failed to fetch from IMF: {e}")
+            return []
+    
+    async def fetch_global_supply_demand(self) -> Optional[Dict]:
+        """
+        Fetch global gold supply/demand balance data.
+        
+        Returns static data based on WGC (World Gold Council) quarterly reports.
+        In a production system, this would fetch from WGC API or database.
+        
+        Returns:
+            Dict with supply and demand breakdown
+        """
+        # Static data based on WGC Q3 2024 report
+        # In production, this would come from WGC API or database
+        return {
+            "date": "2024-Q3",
+            "supply": {
+                "mine_production": 2976,
+                "recycling": 1250,
+                "net_hedging": -30,
+                "total": 4196,
+            },
+            "demand": {
+                "jewelry": 1958,
+                "technology": 382,
+                "investment": 1178,
+                "central_banks": 693,
+                "total": 4211,
+            },
+        }
     
     async def get_china_history_online(self, months: int = 60) -> List[Dict]:
         """
-        Get China gold reserves history from SAFE (官方权威数据).
-        
-        数据来源: 国家外汇管理局官网 (www.safe.gov.cn)
-        更新频率: 每月7日左右
+        Get China's gold reserve history from IMF API.
         
         Args:
-            months: Number of months of history to return (default 60 = 5 years)
-            
+            months: Number of months of history (default 60 = 5 years)
+        
         Returns:
-            List of historical reserve data from SAFE
+            List of historical data with date and amount
         """
-        # 优先使用 SAFE 官方数据
-        logger.info("Fetching China gold reserves from SAFE (官方数据)...")
-        result: ScraperResult = await self._safe_scraper.scrape()
-        
-        if result.success and result.data:
-            data = [
-                {
-                    "country": r.country_name,
-                    "code": r.country_code,
-                    "amount": r.amount_tonnes,
-                    "date": r.report_date.strftime("%Y-%m"),
-                    "source": r.data_source,
-                }
-                for r in result.data
-            ]
-            # Sort by date descending (most recent first)
-            data.sort(key=lambda x: x["date"], reverse=True)
-            return data[:months]
-        
-        # 如果 SAFE 失败，尝试 AkShare（但会有警告）
-        logger.warning("SAFE fetch failed, falling back to AkShare (数据可能不完整)")
-        akshare_data = await self._fetch_from_akshare()
-        
-        if akshare_data:
-            return akshare_data[:months]
-        
-        logger.warning("Failed to fetch China gold history from all sources")
-        return []
+        history = await self.get_history("CHN", months=months)
+        return [
+            {
+                "date": h["date"],
+                "amount": h["amount"],
+            }
+            for h in history
+        ]
+
 
 
 # Singleton instance

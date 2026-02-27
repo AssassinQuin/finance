@@ -1,19 +1,14 @@
 """
 Gold reserve data scrapers.
-Supports multiple data sources: WGC, IMF, AkShare, SAFE, and direct central bank scrapers.
+Primary source: IMF SDMX 3.0 API (IRFCL dataset)
 """
 
 from .base import BaseScraper, ScraperResult
-from .wgc_scraper import WGCScraper
-from .imf_scraper import IMFScraper
-from .akshare_scraper import AkShareScraper
-from .safe_scraper import SAFEScraper
+from .imf_scraper import IMFScraper, GOLD_COUNTRY_CODES
 
 __all__ = [
     "BaseScraper",
     "ScraperResult",
-    "WGCScraper",
     "IMFScraper",
-    "AkShareScraper",
-    "SAFEScraper",
+    "GOLD_COUNTRY_CODES",
 ]

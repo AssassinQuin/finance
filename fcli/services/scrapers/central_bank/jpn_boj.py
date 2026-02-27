@@ -11,7 +11,7 @@ from typing import List, Optional
 import logging
 
 from ..base import BaseScraper, ScraperResult
-from ....core.database import GoldReserve
+from ....core.models import GoldReserve
 from ....infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
