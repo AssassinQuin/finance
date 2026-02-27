@@ -1,6 +1,7 @@
-﻿from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import re
+import json
 import logging
 from ..core.models import Quote, Asset, Market, AssetType
 from ..core.config import config
@@ -17,7 +18,7 @@ class QuoteService:
         cached = cache.get(cache_key)
         if cached:
             return Quote(**cached)
-        
+
         # 从网络获取
         for source in config.source.quote_priority:
             try:
@@ -35,6 +36,7 @@ class QuoteService:
                     cache.set(cache_key, self._quote_to_dict(quote), config.cache.quote_ttl)
                     return quote
             except Exception as e:
+                logger.warning(f"Source {source} failed: {e}")
                 if not config.source.fallback_enabled:
                     raise
                 continue
@@ -49,8 +51,8 @@ class QuoteService:
             "price": quote.price,
             "change_percent": quote.change_percent,
             "update_time": quote.update_time,
-            "market": quote.market.value if hasattr(quote.market, 'value') else quote.market,
-            "type": quote.type.value if hasattr(quote.type, 'value') else quote.type,
+            "market": quote.market.value if hasattr(quote.market, "value") else quote.market,
+            "type": quote.type.value if hasattr(quote.type, "value") else quote.type,
             "high": quote.high,
             "low": quote.low,
             "volume": quote.volume,
@@ -79,11 +81,17 @@ class QuoteService:
         match = re.search(r"jsonpgz\((.*?)\);", text)
         if not match:
             return None
-
         try:
-            data = eval(match.group(1))
-        except (SyntaxError, NameError, TypeError) as e:
-            logger.debug(f"Failed to parse gz data: {e}")
+            # 使用 json.loads 替代 eval() 避免安全风险
+            # fundgz.1234567 返回的格式是类 JSON 但键未加引号
+            json_str = match.group(1)
+            try:
+                data = json.loads(json_str)
+            except json.JSONDecodeError:
+                # 如果失败，使用正则提取关键字段
+                data = self._parse_fund_response(json_str)
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.debug(f"Failed to parse fund gz data: {e}")
             return None
 
         if not data or not data.get("gsz"):
@@ -95,14 +103,30 @@ class QuoteService:
         return Quote(
             code=asset.code,
             name=data.get("name", asset.name),
-            price=price,
-            change_percent=change_percent,
-            update_time=data.get("gztime", "")[-8:]
-            if data.get("gztime")
-            else datetime.now().strftime("%H:%M:%S"),
             market=asset.market,
             type=asset.type,
         )
+
+    def _parse_fund_response(self, json_str: str) -> Dict[str, Any]:
+        """
+        解析 fundgz.1234567.com.cn 返回的非标准 JSON 格式。
+        该 API 返回的格式类似于: {fundcode:"000001",name:"华夏成长",gsz:"1.234",...}
+        键没有引号，无法直接用 json.loads 解析。
+        """
+        # 使用正则提取关键字段
+        patterns = {
+            "fundcode": r'fundcode:"([^"]+)"',
+            "name": r'name:"([^"]+)"',
+            "gsz": r'gsz:"([^"]+)"',
+            "gszzl": r'gszzl:"([^"]+)"',
+            "gztime": r'gztime:"([^"]+)"',
+        }
+        result = {}
+        for key, pattern in patterns.items():
+            match = re.search(pattern, json_str)
+            if match:
+                result[key] = match.group(1)
+        return result
 
     async def _fetch_sina_cn(self, asset: Asset) -> Optional[Quote]:
         code = asset.api_code
@@ -285,9 +309,7 @@ class QuoteService:
             type=asset.type,
             high=float(d.get("f44", 0)) / 100 if d.get("f44") else None,
             low=float(d.get("f45", 0)) / 100 if d.get("f45") else None,
-            volume=str(int(d.get("f47", 0)))
-            if d.get("f47") and d.get("f47") != "-"
-            else None,
+            volume=str(int(d.get("f47", 0))) if d.get("f47") and d.get("f47") != "-" else None,
         )
 
     async def _fetch_yahoo(self, asset: Asset) -> Optional[Quote]:
@@ -298,7 +320,7 @@ class QuoteService:
 
         quotes = []
         remaining_assets = []
-        
+
         # 先检查缓存
         for asset in assets:
             cache_key = f"quote:{asset.code}"
@@ -308,18 +330,16 @@ class QuoteService:
                 quotes.append(Quote(**cached))
             else:
                 remaining_assets.append(asset)
-        
+
         # 如果全部命中缓存，直接返回
         if not remaining_assets:
             return quotes
-        
+
         # 对未命中缓存的资产进行分类
         global_assets = [a for a in remaining_assets if a.market == Market.GLOBAL]
         cn_assets = [a for a in remaining_assets if a.market == Market.CN]
         hk_assets = [a for a in remaining_assets if a.market == Market.HK]
-        other_assets = [
-            a for a in remaining_assets if a.market not in [Market.GLOBAL, Market.CN, Market.HK]
-        ]
+        other_assets = [a for a in remaining_assets if a.market not in [Market.GLOBAL, Market.CN, Market.HK]]
 
         if global_assets:
             secids = [
@@ -351,9 +371,7 @@ class QuoteService:
 
         return quotes
 
-    async def _fetch_global_batch(
-        self, assets: List[Asset], secids: List[str]
-    ) -> List[Quote]:
+    async def _fetch_global_batch(self, assets: List[Asset], secids: List[str]) -> List[Quote]:
         if not secids:
             return []
 
@@ -372,10 +390,7 @@ class QuoteService:
 
         quotes = []
         asset_map = {
-            asset.api_code.split(".")[1]
-            if "." in asset.api_code
-            else asset.api_code: asset
-            for asset in assets
+            asset.api_code.split(".")[1] if "." in asset.api_code else asset.api_code: asset for asset in assets
         }
 
         for item in data["data"].get("diff", []):
@@ -398,12 +413,10 @@ class QuoteService:
                     type=asset.type,
                     high=float(item.get("f17", 0)) if item.get("f17") else None,
                     low=float(item.get("f18", 0)) if item.get("f18") else None,
-                    volume=str(int(float(item.get("f47", 0))))
-                    if item.get("f47") and item.get("f47") != "-"
-                    else None,
+                    volume=str(int(float(item.get("f47", 0)))) if item.get("f47") and item.get("f47") != "-" else None,
                 )
             )
-            
+
             # 存入缓存
             cache_key = f"quote:{asset.code}"
             cache.set(cache_key, self._quote_to_dict(quotes[-1]), config.cache.quote_ttl)

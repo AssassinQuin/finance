@@ -1,5 +1,6 @@
-﻿import re
+import re
 from datetime import datetime
+
 
 def normalize_time(time_str: str) -> str:
     """

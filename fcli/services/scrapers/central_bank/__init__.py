@@ -26,10 +26,10 @@ CENTRAL_BANK_SCRAPERS: Dict[str, Type[BaseScraper]] = {
 def get_scraper(country_code: str) -> BaseScraper:
     """
     Get scraper instance for a specific country.
-    
+
     Args:
         country_code: ISO 3-letter country code
-        
+
     Returns:
         BaseScraper instance or None if not available
     """
@@ -42,7 +42,7 @@ def get_scraper(country_code: str) -> BaseScraper:
 def get_supported_countries() -> list:
     """
     Get list of countries with direct scrapers.
-    
+
     Returns:
         List of ISO country codes
     """

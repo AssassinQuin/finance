@@ -1,4 +1,4 @@
-﻿from typing import List
+from typing import List
 
 from rich import box
 from rich.console import Console
@@ -137,11 +137,7 @@ class ConsolePresenter:
             if info:
                 change = info["change"]
                 change_pct = info["change_pct"]
-                style = (
-                    "bold red"
-                    if change > 0
-                    else ("bold green" if change < 0 else "white")
-                )
+                style = "bold red" if change > 0 else ("bold green" if change < 0 else "white")
 
                 gpr_table.add_row(
                     label,
@@ -170,34 +166,44 @@ class ConsolePresenter:
         reserves_table = Table(
             box=box.SIMPLE,
             header_style="bold yellow",
-            title="全球 Top 20 央行黄金储备 (及变动分析)",
+            title="全球 Top 20 央行黄金储备 (多时间段变化)",
         )
-        reserves_table.add_column("排名", justify="center", style="dim")
-        reserves_table.add_column("国家/组织", justify="left")
-        reserves_table.add_column("储备量 (吨)", justify="right", style="bold")
-        reserves_table.add_column("近一月变动", justify="right")
-        reserves_table.add_column("近一年变动", justify="right")
-        reserves_table.add_column("数据日期", justify="center", style="dim")
+        reserves_table.add_column("排名", justify="center", style="dim", width=4)
+        reserves_table.add_column("国家/组织", justify="left", width=16)
+        reserves_table.add_column("储备量(吨)", justify="right", style="bold", width=12)
+        reserves_table.add_column("1月变化", justify="right", width=10)
+        reserves_table.add_column("3月变化", justify="right", width=10)
+        reserves_table.add_column("6月变化", justify="right", width=10)
+        reserves_table.add_column("12月变化", justify="right", width=10)
+        reserves_table.add_column("数据日期", justify="center", style="dim", width=8)
 
-        for i, r in enumerate(data.get("reserves", []), 1):
-            # Helper to format change
-            def format_change(val):
-                if val is None:
-                    return "[dim]-[/dim]"
-                if val > 0:
-                    return f"[bold red]+{val:.2f}[/bold red]"
-                if val < 0:
-                    return f"[bold green]{val:.2f}[/bold green]"
-                return "0.00"
-
+        def format_change(val):
+            """Format change value with color."""
+            if val is None or val == 0:
+                return "-"
+            if val > 0:
+                return f"[bold red]+{val:.1f}[/bold red]"
+            return f"[bold green]{val:.1f}[/bold green]"
+            if val is None or val == 0:
+                return "-"
+            if val > 0:
+                return f"[bold red]+{val:.1f}[/bold red]"
+            return f"[bold green]{val:.1f}[/bold green]"
+        
+        # Add rows to the reserves table
+        reserves = data.get("reserves", [])
+        for i, r in enumerate(reserves, 1):
             reserves_table.add_row(
                 str(i),
-                f"{r['country']} ({r['code']})",
-                f"{r['amount']:.2f}",
-                format_change(r["change_1m"]),
-                format_change(r["change_1y"]),
-                r["date"],
+                r.get("country", ""),
+                f"{r.get('amount', 0):.1f}",
+                format_change(r.get("change_1m")),
+                format_change(r.get("change_3m")),
+                format_change(r.get("change_6m")),
+                format_change(r.get("change_12m")),
+                r.get("date", ""),
             )
+
         console.print(reserves_table)
 
         # 2. Global Supply/Demand Balance
@@ -273,9 +279,7 @@ class ConsolePresenter:
                 prev = history[i + 1]
                 diff = curr["amount"] - prev["amount"]
                 change_str = f"{diff:+.2f}"
-                change_style = (
-                    "bold red" if diff > 0 else ("bold green" if diff < 0 else "white")
-                )
+                change_style = "bold red" if diff > 0 else ("bold green" if diff < 0 else "white")
 
             table.add_row(
                 curr["date"],
@@ -295,9 +299,7 @@ class ConsolePresenter:
         plt.clf()
         # Set date form to match YYYY-MM
         # Use single % because this is literal python string
-        plt.date_form(
-            "Y-m"
-        )  # plotext uses Y-m instead of %Y-%m in some versions? No, let's try standard
+        plt.date_form("Y-m")  # plotext uses Y-m instead of %Y-%m in some versions? No, let's try standard
         plt.plot(dates, values, marker="dot", color="cyan")
         plt.title("地缘政治风险指数 (GPR) 历史趋势")
         plt.xlabel("日期")
@@ -344,9 +346,9 @@ class ConsolePresenter:
         table.add_column("汇率", justify="right", style="bold")
 
         table.add_row(
-                f"{rate.base_currency}/{rate.quote_currency}",
-                f"{rate.rate:.4f}",
-            )
+            f"{rate.base_currency}/{rate.quote_currency}",
+            f"{rate.rate:.4f}",
+        )
         console.print(table)
 
     @staticmethod
@@ -359,10 +361,10 @@ class ConsolePresenter:
         if not data:
             ConsolePresenter.print_error("暂无黄金储备数据。")
             return
-        
+
         from rich.columns import Columns
         from rich.panel import Panel
-        
+
         # === 左侧: 央行储备 Top 10 ===
         left_table = Table(
             box=box.SIMPLE,
@@ -375,9 +377,9 @@ class ConsolePresenter:
         left_table.add_column("国家", justify="left", width=8)
         left_table.add_column("储备(吨)", justify="right", style="bold", width=10)
         left_table.add_column("年变动", justify="right", width=8)
-        
+
         reserves = data.get("reserves", [])[:10]  # 只显示 Top 10
-        
+
         def fmt_change(val):
             if val is None:
                 return "[dim]-[/dim]"
@@ -386,26 +388,26 @@ class ConsolePresenter:
             if val < 0:
                 return f"[green]{val:.1f}[/green]"
             return "0.0"
-        
+
         for i, r in enumerate(reserves, 1):
             left_table.add_row(
                 str(i),
-                r['country'][:4] if len(r['country']) > 4 else r['country'],
+                r["country"][:4] if len(r["country"]) > 4 else r["country"],
                 f"{r['amount']:.1f}",
                 fmt_change(r.get("change_1y")),
             )
-        
+
         left_panel = Panel(
             left_table,
             title="[bold yellow]央行黄金储备 Top 10[/bold yellow]",
             border_style="yellow",
             padding=(0, 1),
         )
-        
+
         # === 右侧上半: SPDR持仓 ===
         spdr = data.get("spdr", {})
         latest = spdr.get("latest")
-        
+
         spdr_table = Table(
             box=box.SIMPLE,
             header_style="bold cyan",
@@ -414,27 +416,27 @@ class ConsolePresenter:
         )
         spdr_table.add_column("指标", justify="left", width=10)
         spdr_table.add_column("数值", justify="right", width=12)
-        
+
         if latest:
             trend_icon = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}.get(spdr.get("trend"), "")
             spdr_table.add_row("当前持仓", f"[bold]{latest['holdings']:.2f}[/bold] 吨")
             spdr_table.add_row("日变化", fmt_change(spdr.get("change_1d")))
             spdr_table.add_row("周变化", fmt_change(spdr.get("change_7d")) + " " + trend_icon)
             spdr_table.add_row("月变化", fmt_change(spdr.get("change_30d")))
-            spdr_table.add_row("总价值", f"${latest['value']/1e9:.1f}B")
+            spdr_table.add_row("总价值", f"${latest['value'] / 1e9:.1f}B")
         else:
             spdr_table.add_row("数据", "[dim]暂无[/dim]")
-        
+
         spdr_panel = Panel(
             spdr_table,
             title="[bold cyan]SPDR Gold Trust (GLD)[/bold cyan]",
             border_style="cyan",
             padding=(0, 1),
         )
-        
+
         # === 右侧下半: 供需平衡 ===
         balance = data.get("balance", {})
-        
+
         balance_table = Table(
             box=box.SIMPLE,
             header_style="bold green",
@@ -445,23 +447,23 @@ class ConsolePresenter:
         balance_table.add_column("吨", justify="right", width=6)
         balance_table.add_column("需求", justify="left", width=8)
         balance_table.add_column("吨", justify="right", width=6)
-        
+
         if balance:
             supply = balance.get("supply", {})
             demand = balance.get("demand", {})
-            
+
             rows = [
                 ("矿产", supply.get("mine_production"), "金饰", demand.get("jewelry")),
                 ("回收", supply.get("recycling"), "科技", demand.get("technology")),
                 ("套保", supply.get("net_hedging"), "投资", demand.get("investment")),
                 ("", None, "央行", demand.get("central_banks")),
             ]
-            
+
             for s_name, s_val, d_name, d_val in rows:
                 s_str = f"{s_val:.0f}" if s_val else ""
                 d_str = f"{d_val:.0f}" if d_val else ""
                 balance_table.add_row(s_name, s_str, d_name, d_str)
-            
+
             # 总计行
             balance_table.add_row(
                 "[bold]总计[/bold]",
@@ -469,20 +471,21 @@ class ConsolePresenter:
                 "[bold]总计[/bold]",
                 f"[bold]{demand.get('total', 0):.0f}[/bold]",
             )
-        
+
         balance_panel = Panel(
             balance_table,
             title=f"[bold green]供需平衡 ({balance.get('date', 'N/A')})[/bold green]",
             border_style="green",
             padding=(0, 1),
         )
-        
+
         # === 组合显示 ===
         right_content = Columns([spdr_panel, balance_panel])
-        
+
         from rich.console import Group
+
         console.print()
         console.print(Columns([left_panel, Group(spdr_panel, balance_panel)]))
-        
+
         if data.get("last_update"):
             console.print(f"\n[dim]更新时间: {data['last_update']}[/dim]")

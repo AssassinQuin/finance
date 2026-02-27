@@ -166,6 +166,7 @@ async def migrate():
         await create_tables()
 
         from fcli.core.stores import CentralBankScheduleStore
+
         await CentralBankScheduleStore.init_default_schedules()
 
         print("Migration completed successfully")

@@ -1,5 +1,6 @@
 """Gold reserve store for database operations."""
 
+from datetime import date
 from typing import List, Dict, Any, Optional
 import aiomysql
 
@@ -164,6 +165,78 @@ class GoldReserveStore(BaseStore[GoldReserve]):
                 await cur.execute(sql)
                 rows = await cur.fetchall()
                 return [dict(row) for row in rows]
+
+    @classmethod
+    async def get_latest_with_multi_period_changes(cls) -> List[Dict[str, Any]]:
+        """Get latest reserves with 1m, 3m, 6m, 12m changes."""
+        if not cls._is_enabled():
+            return []
+
+        sql = """
+        WITH latest AS (
+            SELECT gr.country_code, gr.country_name, gr.amount_tonnes, gr.percent_of_reserves,
+                   gr.report_date, gr.data_source
+            FROM gold_reserves gr
+            INNER JOIN (
+                SELECT country_code, MAX(report_date) as max_date FROM gold_reserves GROUP BY country_code
+            ) m ON gr.country_code = m.country_code AND gr.report_date = m.max_date
+        )
+        SELECT
+            l.country_code as code,
+            l.country_name as country,
+            l.amount_tonnes as amount,
+            l.percent_of_reserves,
+            DATE_FORMAT(l.report_date, '%Y-%m') as date,
+            l.data_source as source,
+            COALESCE(l.amount_tonnes - (
+                SELECT g.amount_tonnes FROM gold_reserves g
+                WHERE g.country_code = l.country_code AND g.report_date < l.report_date
+                ORDER BY g.report_date DESC LIMIT 1
+            ), 0) as change_1m,
+            COALESCE(l.amount_tonnes - (
+                SELECT g.amount_tonnes FROM gold_reserves g
+                WHERE g.country_code = l.country_code AND g.report_date < l.report_date
+                ORDER BY g.report_date DESC LIMIT 1 OFFSET 2
+            ), 0) as change_3m,
+            COALESCE(l.amount_tonnes - (
+                SELECT g.amount_tonnes FROM gold_reserves g
+                WHERE g.country_code = l.country_code AND g.report_date < l.report_date
+                ORDER BY g.report_date DESC LIMIT 1 OFFSET 5
+            ), 0) as change_6m,
+            COALESCE(l.amount_tonnes - (
+                SELECT g.amount_tonnes FROM gold_reserves g
+                WHERE g.country_code = l.country_code AND g.report_date < l.report_date
+                ORDER BY g.report_date DESC LIMIT 1 OFFSET 11
+            ), 0) as change_12m
+        FROM latest l
+        ORDER BY l.amount_tonnes DESC
+        """
+
+        async with cls._pool().acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(sql)
+                rows = await cur.fetchall()
+                return [dict(row) for row in rows]
+
+    @classmethod
+    async def get_all_latest_dates(cls) -> Dict[str, date]:
+        """Get the latest report date for each country."""
+        if not cls._is_enabled():
+            return {}
+
+        sql = """
+        SELECT country_code, MAX(report_date) as latest_date
+        FROM gold_reserves
+        GROUP BY country_code
+        """
+
+        async with cls._pool().acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(sql)
+                rows = await cur.fetchall()
+                return {row["country_code"]: row["latest_date"] for row in rows}
+
+
 
 
 class CentralBankScheduleStore(BaseStore[CentralBankSchedule]):

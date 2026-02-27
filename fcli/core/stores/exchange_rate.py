@@ -58,9 +58,7 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
                 return True
 
     @classmethod
-    async def get_latest(
-        cls, base_currency: str, quote_currency: str
-    ) -> Optional[ExchangeRate]:
+    async def get_latest(cls, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
         """Get latest exchange rate for a currency pair."""
         if not cls._is_enabled():
             return None
@@ -103,9 +101,7 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
                 return [cls._row_to_model(row) for row in rows]
 
     @classmethod
-    async def get_history(
-        cls, base_currency: str, quote_currency: str, days: int = 30
-    ) -> List[ExchangeRate]:
+    async def get_history(cls, base_currency: str, quote_currency: str, days: int = 30) -> List[ExchangeRate]:
         """Get historical rates for a currency pair."""
         if not cls._is_enabled():
             return []

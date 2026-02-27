@@ -1,12 +1,13 @@
-"""Database connection pool manager."""
-
 import asyncio
+import logging
 from typing import Optional
 
 import aiomysql
 
 from .config import config
 from .exceptions import DatabaseError
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -44,7 +45,7 @@ class Database:
             return True
         except Exception as e:
             cls._enabled = False
-            print(f"Database initialization failed: {e}")
+            logger.error(f"Database initialization failed: {e}")
             return False
 
     @classmethod
@@ -98,5 +99,3 @@ class Database:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(sql, params)
                 return await cur.fetchall()
-
-

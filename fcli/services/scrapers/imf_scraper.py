@@ -1,4 +1,4 @@
-﻿"""
+"""
 IMF SDMX 3.0 API Gold Reserves Scraper
 使用 IMF IRFCL (International Reserves and Foreign Currency Liquidity) 数据集
 """
@@ -104,9 +104,7 @@ class IMFScraper:
         async with self._session_lock:
             if self._session is None or self._session.closed:
                 connector = aiohttp.TCPConnector(ssl=False)
-                self._session = aiohttp.ClientSession(
-                    connector=connector, trust_env=True
-                )
+                self._session = aiohttp.ClientSession(connector=connector, trust_env=True)
             return self._session
 
     async def close(self):
@@ -179,9 +177,7 @@ class IMFScraper:
 
         timeout = aiohttp.ClientTimeout(total=60, connect=30)
 
-        async with session.get(
-            url, headers=self.headers, proxy=proxy, timeout=timeout
-        ) as response:
+        async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
             if response.status == 200:
                 data = await response.json()
                 return self._parse_response(data)
@@ -245,11 +241,7 @@ class IMFScraper:
 
                         try:
                             # obs_value 格式: ["7072000", null, 0, null]
-                            raw_value = (
-                                obs_value[0]
-                                if isinstance(obs_value, list)
-                                else obs_value
-                            )
+                            raw_value = obs_value[0] if isinstance(obs_value, list) else obs_value
                             if raw_value is None:
                                 continue
 
@@ -280,7 +272,7 @@ class IMFScraper:
                             continue
 
         except Exception as e:
-            print(f"  Error parsing IMF response: {e}")
+            logger.warning(f"Error parsing IMF response: {e}")
 
         return result
 
@@ -301,9 +293,7 @@ class IMFScraper:
         start_period = start_date.strftime("%Y-%m")
         end_period = end_date.strftime("%Y-%m")
 
-        data = await self.fetch_gold_reserves(
-            country_code, start_period=start_period, end_period=end_period
-        )
+        data = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
 
         if not data:
             return None
@@ -317,9 +307,7 @@ class IMFScraper:
             "country_name": GOLD_COUNTRY_CODES.get(country_code, country_code),
         }
 
-    async def get_gold_reserves_history(
-        self, country_code: str, years: int = 10
-    ) -> dict:
+    async def get_gold_reserves_history(self, country_code: str, years: int = 10) -> dict:
         """
         获取指定国家近N年的月度黄金储备历史数据
         """
@@ -329,14 +317,15 @@ class IMFScraper:
         start_period = start_date.strftime("%Y-%m")
         end_period = end_date.strftime("%Y-%m")
 
-        data = await self.fetch_gold_reserves(
-            country_code, start_period=start_period, end_period=end_period
-        )
+        data = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
 
-        print(f"  {country_code}: fetched {len(data)} periods")
+        logger.debug(f"{country_code}: fetched {len(data)} periods")
         if data:
             sample = list(data.items())[:3]
-            print(f"    Sample: {sample}")
+            logger.debug(f"Sample: {sample}")
+        if data:
+            sample = list(data.items())[:3]
+
 
         return {
             "country_code": country_code,
@@ -346,9 +335,7 @@ class IMFScraper:
             "data": data,
         }
 
-    async def batch_get_latest_reserves(
-        self, country_codes: Optional[list[str]] = None
-    ) -> list[dict]:
+    async def batch_get_latest_reserves(self, country_codes: Optional[list[str]] = None) -> list[dict]:
         """
         批量获取多国最新黄金储备
 
@@ -369,7 +356,7 @@ class IMFScraper:
         valid_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"Error fetching {country_codes[i]}: {result}")
+                logger.warning(f"Error fetching {country_codes[i]}: {result}")
             elif result:
                 valid_results.append(result)
 
@@ -378,9 +365,7 @@ class IMFScraper:
 
         return valid_results
 
-    async def batch_get_history(
-        self, country_codes: Optional[list[str]] = None, years: int = 10
-    ) -> list[dict]:
+    async def batch_get_history(self, country_codes: Optional[list[str]] = None, years: int = 10) -> list[dict]:
         """
         批量获取多国近N年月度黄金储备历史
 
@@ -401,7 +386,7 @@ class IMFScraper:
         valid_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"Error fetching history for {country_codes[i]}: {result}")
+                logger.warning(f"Error fetching history for {country_codes[i]}: {result}")
             elif result and result.get("data"):
                 valid_results.append(result)
 

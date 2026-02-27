@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class FetchLog(BaseModel):
     """Fetch operation log."""
+
     id: Optional[int] = None
     data_type: str = ""  # gold_reserves, etc.
     source: str = ""  # WGC, IMF, etc.
@@ -23,6 +24,7 @@ class FetchLog(BaseModel):
 
 class WatchlistAssetDB(BaseModel):
     """Watchlist asset database model."""
+
     id: Optional[int] = None
     code: str = ""  # 用户输入代码
     api_code: str = ""  # API 查询代码

@@ -25,6 +25,7 @@ app = typer.Typer(
 
 # ============ Quote (Default) ============
 
+
 @app.callback(invoke_without_command=True)
 def quote(ctx: typer.Context):
     """查询自选行情 (默认命令)"""
@@ -33,7 +34,7 @@ def quote(ctx: typer.Context):
     asyncio.run(_fetch_quotes())
 
 
-async def _fetch_quotes():
+async def _fetch_quotes() -> None:
     assets = await storage.load()
     if not assets:
         ConsolePresenter.print_warning("暂无自选。使用 'fcli add <代码>' 添加。")
@@ -48,10 +49,12 @@ async def _fetch_quotes():
 
 # ============ Watchlist ============
 
+
 @app.command()
 def add(codes: List[str]):
     """添加自选"""
-    async def _add():
+
+    async def _add() -> int:
         count = 0
         for code in codes:
             market = Market.CN if code.isdigit() or code.startswith(("6", "0", "3")) else Market.US
@@ -59,6 +62,7 @@ def add(codes: List[str]):
             if await storage.add(asset):
                 count += 1
         return count
+
     count = asyncio.run(_add())
     ConsolePresenter.print_success(f"已添加 {count} 个自选")
 
@@ -66,8 +70,10 @@ def add(codes: List[str]):
 @app.command()
 def rm(code: str):
     """删除自选"""
-    async def _rm():
+
+    async def _rm() -> bool:
         return await storage.remove(code)
+
     if asyncio.run(_rm()):
         ConsolePresenter.print_success(f"已删除 {code}")
     else:
@@ -83,52 +89,42 @@ def ls():
 
 # ============ Gold ============
 
+
 @app.command()
 def gold(
     update: bool = typer.Option(False, "-u", "--update", help="强制更新"),
-    history: str = typer.Option(None, "-h", "--history", help="历史趋势 (国家代码)"),
-    china: bool = typer.Option(False, "-c", "--china", help="中国5年历史"),
 ):
-    """全球黄金储备"""
-    asyncio.run(_gold(update, history, china))
+    """全球黄金储备 - 显示 1月、3月、6月、12月变化"""
+    asyncio.run(_gold(update))
 
 
-async def _gold(update: bool, history: Optional[str], china: bool):
+async def _gold(update: bool) -> None:
+    """执行黄金储备查询，    
+    流程:
+        1. 从数据库获取数据
+        2. 如果不是上月最新数据，自动从 IMF 更新
+        3. 展示多时间段变化 (1m, 3m, 6m, 12m)
+    """
     try:
-        if china:
-            data = await gold_service.get_china_history_online(months=60)
-            if data:
-                print("\n🇨🇳 中国央行黄金储备近5年变化:\n")
-                prev = None
-                for h in reversed(data):
-                    change = ""
-                    if prev:
-                        diff = h['amount'] - prev
-                        change = f"+{diff:.2f}" if diff > 0 else f"{diff:.2f}"
-                    print(f"{h['date']}: {h['amount']:>10.2f} 吨  {change:>10}")
-                    prev = h['amount']
-            return
+        # 初始化数据库连接
+        await gold_service.init_database()
         
-        if history:
-            data = await gold_service.get_history(history.upper(), months=24)
-            if data:
-                print(f"\n{history.upper()} 黄金储备历史:\n")
-                for h in reversed(data):
-                    print(f"  {h['date']}: {h['amount']:.2f} 吨")
-            return
-        
+        # 获取最新数据（自动检测并更新过期数据）
         reserves = await gold_service.fetch_all_with_auto_update(force=update)
-        balance = await gold_service.fetch_global_supply_demand()
-        
-        for r in reserves:
-            r["change_1m"] = r.get("change_1m", 0.0)
-            r["change_1y"] = r.get("change_1y", 0.0)
-        
-        ConsolePresenter.print_gold_report({
-            "reserves": reserves,
-            "balance": balance,
-            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        })
+        reserves = await gold_service.fetch_all_with_auto_update(force=update)
+
+        if not reserves:
+            ConsolePresenter.print_warning("无法获取黄金储备数据")
+            return
+
+        # 展示数据
+        ConsolePresenter.print_gold_report(
+            {
+                "reserves": reserves,
+                "balance": None,  # IMF 不提供 supply/demand 数据
+                "last_update": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            }
+        )
     finally:
         await gold_service.close()
         if Database.is_enabled():
@@ -136,6 +132,7 @@ async def _gold(update: bool, history: Optional[str], china: bool):
 
 
 # ============ GPR ============
+
 
 @app.command()
 def gpr(
@@ -154,6 +151,7 @@ def gpr(
 
 # ============ Forex ============
 
+
 @app.command()
 def fx(
     base: str = typer.Argument("USD", help="基准货币"),
@@ -163,7 +161,7 @@ def fx(
     asyncio.run(_fx(base, quote))
 
 
-async def _fx(base: str, quote: Optional[str]):
+async def _fx(base: str, quote: Optional[str]) -> None:
     try:
         if quote:
             rate = await forex_service.get_rate(base, quote)
@@ -185,6 +183,7 @@ async def _fx(base: str, quote: Optional[str]):
 
 
 # ============ Search ============
+
 
 @app.command()
 def find(keyword: str):

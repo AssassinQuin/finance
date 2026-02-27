@@ -13,12 +13,7 @@ class DatabaseSettings(BaseSettings):
     pool_min: int = 2
     pool_max: int = 10
 
-    model_config = SettingsConfigDict(
-        env_prefix="FCLI_DB_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_prefix="FCLI_DB_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 class CacheSettings(BaseSettings):
@@ -29,29 +24,25 @@ class CacheSettings(BaseSettings):
     gpr_ttl: int = Field(default=86400)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_CACHE_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_prefix="FCLI_CACHE_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
 
 class ProxySettings(BaseSettings):
     """代理配置"""
+
     http: str = Field(default="")
     https: str = Field(default="")
     enabled: bool = Field(default=False)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_PROXY_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_prefix="FCLI_PROXY_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
 
 class ApiKeySettings(BaseSettings):
     """API Key 配置"""
+
     fred: str = Field(default="")
     imf_primary: str = Field(default="")
     imf_secondary: str = Field(default="")
@@ -66,6 +57,7 @@ class ApiKeySettings(BaseSettings):
 
 class GoldSettings(BaseSettings):
     """黄金相关配置"""
+
     price_usd_per_ounce: float = Field(default=2300.0, description="黄金价格(USD/盎司)")
     wan_oz_to_tonne: float = Field(default=0.311035, description="万盎司转换为吨的系数")
 
@@ -84,11 +76,10 @@ class SourceSettings(BaseSettings):
     fallback_enabled: bool = True
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_SOURCE_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_prefix="FCLI_SOURCE_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+
 # Package root directory
 PACKAGE_ROOT = Path(__file__).parent.parent.parent
 
@@ -104,11 +95,7 @@ class Settings(BaseSettings):
     source: SourceSettings = Field(default_factory=SourceSettings)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        env_nested_delimiter="__"
+        env_prefix="FCLI_", env_file=".env", env_file_encoding="utf-8", extra="ignore", env_nested_delimiter="__"
     )
 
 

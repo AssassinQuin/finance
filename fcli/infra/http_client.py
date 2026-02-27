@@ -5,6 +5,7 @@ import logging
 from typing import Optional, Dict, Any
 
 from ..core.config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +14,7 @@ class HttpClient:
         self.session: Optional[aiohttp.ClientSession] = None
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-    
+
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
             headers = {
@@ -25,35 +26,31 @@ class HttpClient:
             self.session = aiohttp.ClientSession(
                 headers=headers,
                 connector=connector,
-                trust_env=True  # 支持环境变量代理
+                trust_env=True,  # 支持环境变量代理
             )
         return self.session
-    
+
     async def fetch(
-        self, 
-        url: str, 
-        params: Optional[Dict] = None, 
+        self,
+        url: str,
+        params: Optional[Dict] = None,
         text_mode: bool = False,
         binary_mode: bool = False,
         follow_redirects: bool = True,
-        use_proxy: bool = True
+        use_proxy: bool = True,
     ) -> Any:
         session = await self.get_session()
-        
+
         # 配置代理
         proxy = None
         if use_proxy and config.proxy.enabled:
             proxy = config.proxy.http
-        
+
         for attempt in range(self.max_retries):
             try:
                 timeout = aiohttp.ClientTimeout(total=30, connect=10)
                 async with session.get(
-                    url, 
-                    params=params, 
-                    timeout=timeout,
-                    allow_redirects=follow_redirects,
-                    proxy=proxy
+                    url, params=params, timeout=timeout, allow_redirects=follow_redirects, proxy=proxy
                 ) as response:
                     if binary_mode:
                         return await response.read()
@@ -75,9 +72,9 @@ class HttpClient:
             except Exception as e:
                 logger.error(f"Unexpected error fetching {url}: {e}")
                 break
-        
+
         return None
-    
+
     async def close(self):
         if self.session and not self.session.closed:
             await self.session.close()
