@@ -1,0 +1,53 @@
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: fcli-redis
+    restart: unless-stopped
+    command: redis-server --requirepass 123456zx --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - fcli-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "123456zx", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  mysql:
+    image: mysql:9.6.0
+    container_name: fcli-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456zx
+      MYSQL_DATABASE: fcli
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    networks:
+      - fcli-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456zx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  fcli-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    name: finance_redis_data
+  mysql_data:
+    name: finance_mysql_data

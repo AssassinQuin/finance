@@ -7,8 +7,14 @@ from rich.table import Table
 import plotext as plt
 
 from ..core.models import Asset, Quote, ExchangeRate
+from ..core.config import config
 
 console = Console()
+
+# 从配置获取映射
+MARKET_MAP = config.display.market_map
+TYPE_MAP = config.display.type_map
+TYPE_COLOR = config.display.type_color
 
 MARKET_MAP = {
     "CN": "沪深",
@@ -91,7 +97,7 @@ class ConsolePresenter:
                 quote.name,
                 f"{quote.price:.2f}",
                 f"[{change_style}]{change_str}[/{change_style}]",
-                quote.update_time,
+                quote.update_time.strftime("%Y-%m-%d %H:%M"),
                 market_cn,
                 f"[{type_color}]{type_cn}[/{type_color}]",
             )

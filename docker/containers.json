@@ -1,0 +1,84 @@
+{
+  "project": "fcli",
+  "description": "命令行金融行情工具",
+  "created": "2026-02-26",
+  "containers": {
+    "redis": {
+      "name": "fcli-redis",
+      "image": "redis:7-alpine",
+      "container_id": "fa979c131d043a2013ceea434b65223b47a17351ab6a854d96ca7e95ce711d9c",
+      "status": "running",
+      "ports": {
+        "host": 6379,
+        "container": 6379
+      },
+      "network": {
+        "name": "finance_default",
+        "ip": "172.18.0.2"
+      },
+      "volume": {
+        "name": "finance_redis_data",
+        "path": "/data"
+      },
+      "restart_policy": "unless-stopped"
+    },
+    "mysql": {
+      "name": "fcli-mysql",
+      "image": "mysql:9.6.0",
+      "container_id": "554fd65e81ab069b944ecc9499e6062d3c0d0c5466dc2d2b136c461296f90100",
+      "status": "running",
+      "ports": {
+        "host": 3306,
+        "container": 3306
+      },
+      "network": {
+        "name": "finance_default",
+        "ip": "172.18.0.3"
+      },
+      "volume": {
+        "name": "finance_mysql_data",
+        "path": "/var/lib/mysql"
+      },
+      "restart_policy": "unless-stopped",
+      "config": {
+        "charset": "utf8mb4",
+        "collation": "utf8mb4_unicode_ci",
+        "database": "fcli",
+        "root_password_env": "MYSQL_ROOT_PASSWORD"
+      }
+    }
+  },
+  "network": {
+    "name": "finance_default",
+    "driver": "bridge",
+    "subnet": "172.18.0.0/16",
+    "gateway": "172.18.0.1"
+  },
+  "volumes": [
+    {
+      "name": "finance_redis_data",
+      "driver": "local",
+      "mountpoint": "/var/lib/docker/volumes/finance_redis_data/_data"
+    },
+    {
+      "name": "finance_mysql_data",
+      "driver": "local",
+      "mountpoint": "/var/lib/docker/volumes/finance_mysql_data/_data"
+    }
+  ],
+  "commands": {
+    "start_all": "docker-compose up -d",
+    "stop_all": "docker-compose down",
+    "restart_all": "docker-compose restart",
+    "view_logs": "docker-compose logs -f",
+    "redis_cli": "docker exec -it fcli-redis redis-cli",
+    "mysql_cli": "docker exec -it fcli-mysql mysql -uroot -p",
+    "backup_db": "./docker/backup-db.sh",
+    "restore_db": "./docker/restore-db.sh <file>",
+    "manage": "./docker/manage.sh <command>"
+  },
+  "backups": {
+    "directory": "./docker/backups",
+    "latest": "fcli_schema_20260227.sql.gz"
+  }
+}

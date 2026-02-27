@@ -30,7 +30,7 @@ class Quote(BaseModel):
     name: str
     price: float
     change_percent: float
-    update_time: str
+    update_time: datetime  # 使用 datetime 类型，在展示层格式化
     market: Market
     type: AssetType
     currency: Optional[str] = None

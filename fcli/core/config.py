@@ -28,6 +28,71 @@ class CacheSettings(BaseSettings):
     )
 
 
+class RedisSettings(BaseSettings):
+    """Redis 缓存配置"""
+    enabled: bool = Field(default=False, description="是否启用 Redis 缓存")
+    host: str = Field(default="127.0.0.1", description="Redis 主机地址")
+    port: int = Field(default=6379, description="Redis 端口")
+    password: str = Field(default="", description="Redis 密码")
+    db: int = Field(default=0, description="Redis 数据库编号")
+    prefix: str = Field(default="fcli:", description="缓存 key 前缀")
+    pool_size: int = Field(default=10, description="连接池大小")
+
+    model_config = SettingsConfigDict(
+        env_prefix="FCLI_REDIS_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+
+class HttpSettings(BaseSettings):
+    """HTTP 请求配置"""
+    total_timeout: int = Field(default=30, description="请求总超时时间(秒)")
+    connect_timeout: int = Field(default=10, description="连接超时时间(秒)")
+    max_retries: int = Field(default=3, description="最大重试次数")
+    retry_delay: float = Field(default=1.0, description="重试延迟(秒)")
+    max_concurrent: int = Field(default=10, description="最大并发请求数")
+
+    model_config = SettingsConfigDict(
+        env_prefix="FCLI_HTTP_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+
+class DisplaySettings(BaseSettings):
+    """展示层配置"""
+    market_map: dict = Field(
+        default={
+            "CN": "沪深",
+            "HK": "港股",
+            "US": "美股",
+            "FUND": "基金",
+            "GLOBAL": "全球",
+            "FOREX": "外汇",
+            "BOND": "债券",
+        }
+    )
+    type_map: dict = Field(
+        default={
+            "STOCK": "股票",
+            "FUND": "基金",
+            "INDEX": "指数",
+            "FOREX": "外汇",
+            "BOND": "债券",
+        }
+    )
+    type_color: dict = Field(
+        default={
+            "STOCK": "yellow",
+            "FUND": "magenta",
+            "INDEX": "blue",
+            "FOREX": "cyan",
+            "BOND": "white",
+        }
+    )
+
+    model_config = SettingsConfigDict(
+        env_prefix="FCLI_DISPLAY_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+
 class ProxySettings(BaseSettings):
     """代理配置"""
 
@@ -93,7 +158,9 @@ class Settings(BaseSettings):
     api: ApiKeySettings = Field(default_factory=ApiKeySettings)
     gold: GoldSettings = Field(default_factory=GoldSettings)
     source: SourceSettings = Field(default_factory=SourceSettings)
-
+    http: HttpSettings = Field(default_factory=HttpSettings)
+    display: DisplaySettings = Field(default_factory=DisplaySettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
     model_config = SettingsConfigDict(
         env_prefix="FCLI_", env_file=".env", env_file_encoding="utf-8", extra="ignore", env_nested_delimiter="__"
     )
