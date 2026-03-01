@@ -16,9 +16,27 @@ class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="FCLI_DB_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
+class TradingHoursSettings(BaseSettings):
+    cn_morning_start: str = Field(default="09:30")
+    cn_morning_end: str = Field(default="11:30")
+    cn_afternoon_start: str = Field(default="13:00")
+    cn_afternoon_end: str = Field(default="15:00")
+    hk_morning_start: str = Field(default="09:30")
+    hk_morning_end: str = Field(default="12:00")
+    hk_afternoon_start: str = Field(default="13:00")
+    hk_afternoon_end: str = Field(default="16:00")
+    us_pre_market_start: str = Field(default="21:30")
+    us_pre_market_end: str = Field(default="04:00")
+
+    model_config = SettingsConfigDict(
+        env_prefix="FCLI_TRADING_HOURS_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+
 class CacheSettings(BaseSettings):
     search_ttl: int = Field(default=86400)
     quote_ttl: int = Field(default=300)
+    quote_ttl_trading: int = Field(default=30)
     forex_ttl: int = Field(default=3600)
     gold_ttl: int = Field(default=86400)
     gpr_ttl: int = Field(default=86400)
@@ -30,6 +48,7 @@ class CacheSettings(BaseSettings):
 
 class RedisSettings(BaseSettings):
     """Redis 缓存配置"""
+
     enabled: bool = Field(default=False, description="是否启用 Redis 缓存")
     host: str = Field(default="127.0.0.1", description="Redis 主机地址")
     port: int = Field(default=6379, description="Redis 端口")
@@ -45,6 +64,7 @@ class RedisSettings(BaseSettings):
 
 class HttpSettings(BaseSettings):
     """HTTP 请求配置"""
+
     total_timeout: int = Field(default=30, description="请求总超时时间(秒)")
     connect_timeout: int = Field(default=10, description="连接超时时间(秒)")
     max_retries: int = Field(default=3, description="最大重试次数")
@@ -58,6 +78,7 @@ class HttpSettings(BaseSettings):
 
 class DisplaySettings(BaseSettings):
     """展示层配置"""
+
     market_map: dict = Field(
         default={
             "CN": "沪深",
@@ -154,6 +175,7 @@ class Settings(BaseSettings):
     timeout: int = 10
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
+    trading_hours: TradingHoursSettings = Field(default_factory=TradingHoursSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     api: ApiKeySettings = Field(default_factory=ApiKeySettings)
     gold: GoldSettings = Field(default_factory=GoldSettings)
