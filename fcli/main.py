@@ -9,6 +9,7 @@ from typing import Optional, List
 from .core.config import config
 from .core.database import Database
 from .core.storage import storage
+from .core.datasource_config import symbol_registry
 from .core.models import Asset, Market, AssetType
 from .services.gold_service import gold_service
 from .services.gpr_service import gpr_service
@@ -57,8 +58,10 @@ def add(codes: List[str]):
     async def _add() -> int:
         count = 0
         for code in codes:
-            market = Market.CN if code.isdigit() or code.startswith(("6", "0", "3")) else Market.US
-            asset = Asset(code=code, name=code, market=market, type=AssetType.STOCK)
+            # 使用 symbol_registry 推断市场类型并获取 api_code
+            market = symbol_registry.infer_market(code)
+            api_code = symbol_registry.resolve_api_code(code, market)
+            asset = Asset(code=code, api_code=api_code, name=code, market=market, type=AssetType.STOCK)
             if await storage.add(asset):
                 count += 1
         return count

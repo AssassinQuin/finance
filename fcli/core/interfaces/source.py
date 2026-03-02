@@ -314,12 +314,12 @@ class IForexSource(Protocol):
         """Check if the data source is currently available."""
         ...
 
-    async def get_rate(self, from_currency: str, to_currency: str) -> Any | None:
+    async def get_rate(self, base_currency: str, quote_currency: str) -> Any | None:
         """Get exchange rate between two currencies.
 
         Args:
-            from_currency: Source currency code
-            to_currency: Target currency code
+            base_currency: Source currency code
+            quote_currency: Target currency code
 
         Returns:
             ExchangeRate-like object or None
@@ -354,13 +354,13 @@ class ForexSourceABC(DataSourceABC):
         return [Market.FOREX]
 
     @abstractmethod
-    async def get_rate(self, from_currency: str, to_currency: str) -> Optional["ExchangeRate"]:
+    async def get_rate(self, base_currency: str, quote_currency: str) -> Optional["ExchangeRate"]:
         """
         Get exchange rate between two currencies.
 
         Args:
-            from_currency: Source currency code (e.g., "USD").
-            to_currency: Target currency code (e.g., "CNY").
+            base_currency: Source currency code (e.g., "USD").
+            quote_currency: Target currency code (e.g., "CNY").
 
         Returns:
             ExchangeRate object if successful, None if not available.

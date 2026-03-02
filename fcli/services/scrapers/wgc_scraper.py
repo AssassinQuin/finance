@@ -4,319 +4,285 @@ World Gold Council (WGC) Supply/Demand Data Scraper.
 Data source: https://www.gold.org/goldhub/data/demand-and-supply
 Quarterly gold supply and demand statistics.
 
-Note: WGC does not provide a public API. Data is scraped from their web pages.
+Excel Structure (GDT_Tables_Q425_CN.xlsx):
+- Sheet "黄金供需" contains supply/demand data
+- Row 5: Year/Quarter headers
+- Rows 6-28: Data rows with labels in column B
+- Columns 3-18: Annual data (2010-2025)
+- Columns 24+: Quarterly data (2010 Q1 onwards)
 """
 
-import asyncio
+from __future__ import annotations
+
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from openpyxl import load_workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from ...infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SupplyData:
-    """Gold supply data for a quarter"""
-
-    mine_production: float = 0.0  # 矿产金
-    recycling: float = 0.0  # 回收金
-    net_hedging: float = 0.0  # 净套保
-    total_supply: float = 0.0  # 总供应
-
-
-@dataclass
-class DemandData:
-    """Gold demand data for a quarter"""
-
-    jewelry: float = 0.0  # 金饰需求
-    technology: float = 0.0  # 科技用金
-    total_investment: float = 0.0  # 总投资需求
-    bars_coins: float = 0.0  # 金条金币
-    etfs: float = 0.0  # ETF及类似产品
-    otc_investment: float = 0.0  # OTC投资
-    central_banks: float = 0.0  # 央行购金
-    total_demand: float = 0.0  # 总需求
+# Excel Row Mapping (Row number -> Field name)
+ROW_MAPPING = {
+    6: "total_supply",  # 总供应量
+    7: "mine_production",  # 金矿产量
+    8: "net_hedging",  # 生产商净套保
+    10: "recycling",  # 回收金
+    11: "total_demand",  # 总需求量
+    12: "jewelry",  # 金饰制造
+    15: "technology",  # 科技
+    19: "total_investment",  # 投资
+    20: "bars_coins",  # 金条和金币总需求量
+    24: "etfs",  # 黄金ETF及类似产品
+    25: "central_banks",  # 各央行和官方机构
+    27: "otc_investment",  # 场外投资及其他
+    28: "price_avg_usd",  # LBMA黄金价格
+}
 
 
 @dataclass
 class QuarterlySupplyDemand:
-    """Quarterly supply/demand data"""
+    """Gold supply and demand data for a single quarter"""
 
     year: int
     quarter: int
-    period: str = ""  # e.g., "2025 Q3"
-    supply: SupplyData = field(default_factory=SupplyData)
-    demand: DemandData = field(default_factory=DemandData)
-    price_avg: float = 0.0  # 平均金价 (USD/oz)
+    period: str
+
+    # Supply (tonnes)
+    mine_production: float = 0.0
+    recycling: float = 0.0
+    net_hedging: float = 0.0
+    total_supply: float = 0.0
+
+    # Demand (tonnes)
+    jewelry: float = 0.0
+    technology: float = 0.0
+    total_investment: float = 0.0
+    bars_coins: float = 0.0
+    etfs: float = 0.0
+    otc_investment: float = 0.0
+    central_banks: float = 0.0
+    total_demand: float = 0.0
+
+    # Balance & Price
+    supply_demand_balance: float = 0.0
+    price_avg_usd: float = 0.0
+
     source: str = "WGC"
 
 
 class WGCScraper:
-    """
-    World Gold Council supply/demand data scraper.
+    """WGC Gold Supply/Demand Data Scraper"""
 
-    Data sources:
-    - Main page: https://www.gold.org/goldhub/data/demand-and-supply
-    - Reports: https://www.gold.org/goldhub/research/gold-demand-trends
-
-    The WGC publishes quarterly Gold Demand Trends reports with supply/demand breakdown.
-    """
-
-    # WGC data URLs
-    DATA_URL = "https://www.gold.org/goldhub/data/demand-and-supply"
-    TRENDS_URL = "https://www.gold.org/goldhub/research/gold-demand-trends"
-
-    # Cached data (updated quarterly)
-    _cache: Dict[str, Any] = {}
-    _last_fetch: Optional[datetime] = None
-    _cache_ttl = 86400  # 1 day cache
+    # Known Excel file URLs (can be extended)
+    KNOWN_EXCEL_URLS: Dict[Tuple[int, int], str] = {
+        (2024, 4): "https://www.gold.org/sites/default/files/2024-11/GDT_Tables_Q424_CN.xlsx",
+        (2024, 3): "https://www.gold.org/sites/default/files/2024-11/GDT_Tables_Q424_CN.xlsx",
+        (2024, 2): "https://www.gold.org/sites/default/files/2024-08/GDT_Tables_Q224_CN.xlsx",
+        (2024, 1): "https://www.gold.org/sites/default/files/2024-05/GDT_Tables_Q124_CN.xlsx",
+    }
 
     def __init__(self):
-        self._session = None
+        pass
+    
+    async def close(self):
+        """Close resources (no-op for WGCScraper, uses global http_client)"""
+        pass
 
-    async def close(self) -> None:
-        """Close HTTP session"""
-        pass  # http_client is singleton
-
-    async def fetch_supply_demand(self) -> Optional[QuarterlySupplyDemand]:
+    async def download_excel(self, year: int, quarter: int) -> Optional[bytes]:
         """
-        Fetch the latest quarterly supply/demand data.
+        Download WGC Excel file for a specific quarter.
+
+        Args:
+            year: Year (e.g., 2024)
+            quarter: Quarter (1-4)
 
         Returns:
-            QuarterlySupplyDemand or None if fetch fails
+            Excel file bytes or None if not available
         """
-        try:
-            # 尝试从网页抓取
-            data = await self._scrape_from_page()
-            if data:
-                return data
-
-            # 如果抓取失败，使用最近已知数据
-            return self._get_fallback_data()
-
-        except Exception as e:
-            logger.error(f"Failed to fetch WGC data: {e}")
-            return self._get_fallback_data()
-
-    async def _scrape_from_page(self) -> Optional[QuarterlySupplyDemand]:
-        """Scrape supply/demand data from WGC website"""
-        try:
-            html = await http_client.fetch(self.DATA_URL, text_mode=True)
-            if not html:
-                return None
-
-            # 解析页面获取最新季度数据
-            # WGC页面包含交互式图表，数据可能嵌入在JavaScript中
-            # 这里使用简化的解析逻辑
-
-            return self._parse_html_data(html)
-
-        except Exception as e:
-            logger.warning(f"Failed to scrape WGC page: {e}")
+        url = self.KNOWN_EXCEL_URLS.get((year, quarter))
+        if not url:
+            logger.warning(f"No known URL for {year} Q{quarter}")
             return None
 
-    def _parse_html_data(self, html: str) -> Optional[QuarterlySupplyDemand]:
-        """Parse HTML to extract supply/demand data"""
-        # WGC使用交互式图表，数据通常嵌入在JSON中
-        # 查找类似 "data": [...] 的模式
-
         try:
-            # 尝试提取JSON数据
-            import json
-
-            # 查找嵌入的JSON数据
-            json_pattern = r'"supplyDemandData"\s*:\s*(\[.*?\])'
-            match = re.search(json_pattern, html, re.DOTALL)
-
-            if match:
-                data = json.loads(match.group(1))
-                if data:
-                    latest = data[-1]  # 最新季度
-                    return self._parse_json_quarter(latest)
-
+            content = await http_client.get_binary(url)
+            logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
+            return content
         except Exception as e:
-            logger.debug(f"Failed to parse JSON from HTML: {e}")
+            logger.error(f"Failed to download WGC Excel: {e}")
+            return None
+
+    def parse_excel(self, excel_path: str | Path | bytes) -> List[QuarterlySupplyDemand]:
+        """
+        Parse WGC Excel file and extract quarterly supply/demand data.
+
+        Args:
+            excel_path: Path to Excel file or bytes content
+
+        Returns:
+            List of QuarterlySupplyDemand records
+        """
+        try:
+            if isinstance(excel_path, bytes):
+                wb = load_workbook(excel_path, data_only=True)
+            else:
+                wb = load_workbook(Path(excel_path), data_only=True)
+        except Exception as e:
+            logger.error(f"Failed to load Excel: {e}")
+            return []
+
+        # Find the supply-demand sheet
+        ws = None
+        for sheet_name in ["黄金供需", "Gold demand and supply", "Sheet1"]:
+            if sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                break
+
+        if not ws:
+            logger.error("Supply-demand sheet not found")
+            return []
+
+        # Parse column headers to identify quarterly columns
+        quarterly_cols = self._find_quarterly_columns(ws)
+
+        if not quarterly_cols:
+            logger.warning("No quarterly columns found")
+            return []
+
+        # Extract data for each quarter
+        results: List[QuarterlySupplyDemand] = []
+
+        for (year, quarter), col_idx in quarterly_cols.items():
+            data = self._extract_quarter_data(ws, col_idx, year, quarter)
+            if data:
+                results.append(data)
+
+        wb.close()
+        logger.info(f"Parsed {len(results)} quarters from Excel")
+        return results
+
+    def _find_quarterly_columns(self, ws: Worksheet) -> Dict[Tuple[int, int], int]:
+        """
+        Find quarterly data columns.
+
+        Returns:
+            Dict mapping (year, quarter) to column index (1-based)
+        """
+        result: Dict[Tuple[int, int], int] = {}
+
+        # Row 5 contains the headers
+        for col_idx in range(1, ws.max_column + 1):
+            cell_value = ws.cell(row=5, column=col_idx).value
+            if not cell_value:
+                continue
+
+            # Parse year/quarter from header
+            # Format: "2010 Q1", "2010Q1", "2010年第一季度", etc.
+            parsed = self._parse_period_header(str(cell_value))
+            if parsed:
+                result[parsed] = col_idx
+
+        return result
+
+    def _parse_period_header(self, header: str) -> Optional[Tuple[int, int]]:
+        """Parse year and quarter from header string."""
+        header = header.strip()
+
+        # Format: "2010 Q1" or "2010Q1"
+        match = re.match(r"(\d{4})\s*Q(\d)", header, re.IGNORECASE)
+        if match:
+            return (int(match.group(1)), int(match.group(2)))
+
+        # Format: "2010年第一季度" or "2010年第1季度"
+        match = re.match(r"(\d{4})年.*?第?([一二三四1-4])季度?", header)
+        if match:
+            year = int(match.group(1))
+            q_map = {"一": 1, "二": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
+            quarter = q_map.get(match.group(2))
+            if quarter:
+                return (year, quarter)
 
         return None
 
-    def _parse_json_quarter(self, data: Dict) -> QuarterlySupplyDemand:
-        """Parse JSON quarter data into QuarterlySupplyDemand"""
-        period = data.get("period", "")
-        year, quarter = self._parse_period(period)
+    def _extract_quarter_data(
+        self, ws: Worksheet, col_idx: int, year: int, quarter: int
+    ) -> Optional[QuarterlySupplyDemand]:
+        """Extract data for a specific quarter from a column."""
 
-        supply_data = data.get("supply", {})
-        demand_data = data.get("demand", {})
+        # Read all values from the column
+        values: Dict[str, float] = {}
+
+        for row_idx, field_name in ROW_MAPPING.items():
+            cell_value = ws.cell(row=row_idx, column=col_idx).value
+            if cell_value is not None:
+                try:
+                    values[field_name] = float(cell_value)
+                except (ValueError, TypeError):
+                    pass
+
+        # Skip if no meaningful data
+        if not values or values.get("total_supply", 0) == 0:
+            return None
+
+        # Calculate balance
+        balance = values.get("total_supply", 0) - values.get("total_demand", 0)
 
         return QuarterlySupplyDemand(
             year=year,
             quarter=quarter,
-            period=period,
-            supply=SupplyData(
-                mine_production=float(supply_data.get("mineProduction", 0)),
-                recycling=float(supply_data.get("recycling", 0)),
-                net_hedging=float(supply_data.get("netHedging", 0)),
-                total_supply=float(supply_data.get("total", 0)),
-            ),
-            demand=DemandData(
-                jewelry=float(demand_data.get("jewellery", 0)),
-                technology=float(demand_data.get("technology", 0)),
-                total_investment=float(demand_data.get("investment", {}).get("total", 0)),
-                bars_coins=float(demand_data.get("investment", {}).get("barsCoins", 0)),
-                etfs=float(demand_data.get("investment", {}).get("etfs", 0)),
-                otc_investment=float(demand_data.get("investment", {}).get("otc", 0)),
-                central_banks=float(demand_data.get("centralBanks", 0)),
-                total_demand=float(demand_data.get("total", 0)),
-            ),
-            price_avg=float(data.get("averagePrice", 0)),
+            period=f"{year} Q{quarter}",
+            mine_production=values.get("mine_production", 0),
+            recycling=values.get("recycling", 0),
+            net_hedging=values.get("net_hedging", 0),
+            total_supply=values.get("total_supply", 0),
+            jewelry=values.get("jewelry", 0),
+            technology=values.get("technology", 0),
+            total_investment=values.get("total_investment", 0),
+            bars_coins=values.get("bars_coins", 0),
+            etfs=values.get("etfs", 0),
+            otc_investment=values.get("otc_investment", 0),
+            central_banks=values.get("central_banks", 0),
+            total_demand=values.get("total_demand", 0),
+            supply_demand_balance=balance,
+            price_avg_usd=values.get("price_avg_usd", 0),
         )
 
-    def _parse_period(self, period: str) -> tuple[int, int]:
-        """Parse period string like '2025 Q3' into (year, quarter)"""
-        try:
-            parts = period.split()
-            if len(parts) >= 2:
-                year = int(parts[0])
-                q_str = parts[1].upper()
-                quarter = int(q_str.replace("Q", ""))
-                return year, quarter
-        except:
-            pass
-        return datetime.now().year, (datetime.now().month - 1) // 3 + 1
+    async def fetch_latest(self) -> List[QuarterlySupplyDemand]:
+        """Fetch latest available quarterly data."""
+        current_year = datetime.now().year
+        current_quarter = (datetime.now().month - 1) // 3 + 1
 
-    def _get_fallback_data(self) -> QuarterlySupplyDemand:
+        # Try recent quarters
+        for year in range(current_year, current_year - 3, -1):
+            for quarter in range(4, 0, -1):
+                if year == current_year and quarter > current_quarter:
+                    continue
+
+                excel_bytes = await self.download_excel(year, quarter)
+                if excel_bytes:
+                    return self.parse_excel(excel_bytes)
+
+        return []
+
+    def fetch_from_local(self, file_path: str | Path) -> List[QuarterlySupplyDemand]:
         """
-        Return fallback data when scraping fails.
-
-        Data source: WGC Gold Demand Trends Q4 2025 (published Jan 2026)
-        https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-2025
-
-        2025 Full Year data:
-        - Total demand (incl. OTC): 5,000+ tonnes (record high)
-        - Investment demand: Strong ETF inflows (437t US-listed)
-        - Central bank buying: ~1,000t+
-        """
-        # 使用2025 Q4预估数据（基于WGC报告）
-        return QuarterlySupplyDemand(
-            year=2025,
-            quarter=4,
-            period="2025 Q4",
-            supply=SupplyData(
-                mine_production=985.0,  # 季度矿产约985吨
-                recycling=350.0,  # 回收金约350吨
-                net_hedging=15.0,  # 净套保
-                total_supply=1350.0,  # 总供应
-            ),
-            demand=DemandData(
-                jewelry=480.0,  # 金饰需求
-                technology=85.0,  # 科技用金
-                total_investment=450.0,  # 总投资需求
-                bars_coins=280.0,  # 金条金币
-                etfs=140.0,  # ETF
-                otc_investment=30.0,  # OTC
-                central_banks=225.0,  # 央行购金
-                total_demand=1320.0,  # 总需求
-            ),
-            price_avg=2650.0,  # Q4 2025 average price ~$2650/oz
-        )
-
-    async def fetch_historical(self, quarters: int = 8) -> List[QuarterlySupplyDemand]:
-        """
-        Fetch historical supply/demand data.
+        Parse a local WGC Excel file.
 
         Args:
-            quarters: Number of quarters to fetch (default 8 = 2 years)
+            file_path: Path to the Excel file
 
         Returns:
-            List of QuarterlySupplyDemand
+            List of QuarterlySupplyDemand records
         """
-        # 对于历史数据，我们使用预定义的数据
-        # 实际生产中应该从WGC下载Excel文件解析
-
-        historical_data = self._get_historical_fallback()
-        return historical_data[:quarters]
-
-    def _get_historical_fallback(self) -> List[QuarterlySupplyDemand]:
-        """Get historical data (fallback)"""
-        # 基于WGC公开报告的历史数据
-        return [
-            # 2025 Q4
-            QuarterlySupplyDemand(
-                year=2025,
-                quarter=4,
-                period="2025 Q4",
-                supply=SupplyData(985.0, 350.0, 15.0, 1350.0),
-                demand=DemandData(480.0, 85.0, 450.0, 280.0, 140.0, 30.0, 225.0, 1320.0),
-                price_avg=2650.0,
-            ),
-            # 2025 Q3
-            QuarterlySupplyDemand(
-                year=2025,
-                quarter=3,
-                period="2025 Q3",
-                supply=SupplyData(977.0, 344.0, 12.0, 1333.0),
-                demand=DemandData(511.0, 86.0, 403.0, 253.0, 118.0, 32.0, 186.0, 1313.0),
-                price_avg=2500.0,
-            ),
-            # 2025 Q2
-            QuarterlySupplyDemand(
-                year=2025,
-                quarter=2,
-                period="2025 Q2",
-                supply=SupplyData(970.0, 328.0, 8.0, 1306.0),
-                demand=DemandData(423.0, 81.0, 432.0, 275.0, 118.0, 39.0, 183.0, 1249.0),
-                price_avg=2350.0,
-            ),
-            # 2025 Q1
-            QuarterlySupplyDemand(
-                year=2025,
-                quarter=1,
-                period="2025 Q1",
-                supply=SupplyData(965.0, 315.0, 5.0, 1285.0),
-                demand=DemandData(479.0, 82.0, 398.0, 260.0, 111.0, 27.0, 145.0, 1206.0),
-                price_avg=2250.0,
-            ),
-            # 2024 Q4
-            QuarterlySupplyDemand(
-                year=2024,
-                quarter=4,
-                period="2024 Q4",
-                supply=SupplyData(960.0, 310.0, 3.0, 1273.0),
-                demand=DemandData(510.0, 85.0, 365.0, 235.0, 99.0, 31.0, 167.0, 1197.0),
-                price_avg=2150.0,
-            ),
-            # 2024 Q3
-            QuarterlySupplyDemand(
-                year=2024,
-                quarter=3,
-                period="2024 Q3",
-                supply=SupplyData(955.0, 305.0, 2.0, 1262.0),
-                demand=DemandData(498.0, 84.0, 355.0, 230.0, 95.0, 30.0, 186.0, 1183.0),
-                price_avg=2050.0,
-            ),
-            # 2024 Q2
-            QuarterlySupplyDemand(
-                year=2024,
-                quarter=2,
-                period="2024 Q2",
-                supply=SupplyData(950.0, 300.0, 0.0, 1250.0),
-                demand=DemandData(486.0, 83.0, 345.0, 225.0, 90.0, 30.0, 183.0, 1168.0),
-                price_avg=1950.0,
-            ),
-            # 2024 Q1
-            QuarterlySupplyDemand(
-                year=2024,
-                quarter=1,
-                period="2024 Q1",
-                supply=SupplyData(945.0, 295.0, -2.0, 1238.0),
-                demand=DemandData(479.0, 82.0, 340.0, 220.0, 85.0, 35.0, 178.0, 1151.0),
-                price_avg=1850.0,
-            ),
-        ]
+        return self.parse_excel(file_path)
 
 
 # Singleton instance

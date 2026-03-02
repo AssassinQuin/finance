@@ -16,32 +16,6 @@ MARKET_MAP = config.display.market_map
 TYPE_MAP = config.display.type_map
 TYPE_COLOR = config.display.type_color
 
-MARKET_MAP = {
-    "CN": "沪深",
-    "HK": "港股",
-    "US": "美股",
-    "FUND": "基金",
-    "GLOBAL": "全球",
-    "FOREX": "外汇",
-    "BOND": "债券",
-}
-
-TYPE_MAP = {
-    "STOCK": "股票",
-    "FUND": "基金",
-    "INDEX": "指数",
-    "FOREX": "外汇",
-    "BOND": "债券",
-}
-
-TYPE_COLOR = {
-    "STOCK": "yellow",
-    "FUND": "magenta",
-    "INDEX": "blue",
-    "FOREX": "cyan",
-    "BOND": "white",
-}
-
 
 class ConsolePresenter:
     @staticmethod
@@ -184,14 +158,9 @@ class ConsolePresenter:
         reserves_table.add_column("6月变化", justify="right", width=10)
         reserves_table.add_column("12月变化", justify="right", width=10)
         reserves_table.add_column("数据日期", justify="center", style="dim", width=8)
-
+        
         def format_change(val):
             """Format change value with color."""
-            if val is None or val == 0:
-                return "-"
-            if val > 0:
-                return f"[bold red]+{val:.1f}[/bold red]"
-            return f"[bold green]{val:.1f}[/bold green]"
             if val is None or val == 0:
                 return "-"
             if val > 0:

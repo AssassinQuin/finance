@@ -15,8 +15,8 @@ from ..infra.http_client import http_client
 
 @dataclass
 class ExchangeRate:
-    from_currency: str
-    to_currency: str
+    base_currency: str
+    quote_currency: str
     rate: float
     date: str
     source: str
@@ -45,13 +45,13 @@ class ForexService:
         "RUB": "俄罗斯卢布",
     }
 
-    async def get_rate(self, from_currency: str, to_currency: str) -> Optional[ExchangeRate]:
+    async def get_rate(self, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
         """获取两个货币之间的汇率"""
-        from_currency = from_currency.upper()
-        to_currency = to_currency.upper()
+        base_currency = base_currency.upper()
+        quote_currency = quote_currency.upper()
 
         # 检查缓存
-        cache_key = f"forex:{from_currency}:{to_currency}"
+        cache_key = f"forex:{base_currency}:{quote_currency}"
         cached = await cache.async_get(cache_key)
         if cached:
             return ExchangeRate(**cached)
@@ -60,9 +60,9 @@ class ForexService:
         for source in config.source.forex_priority:
             try:
                 if source == "frankfurter":
-                    rate = await self._fetch_frankfurter(from_currency, to_currency)
+                    rate = await self._fetch_frankfurter(base_currency, quote_currency)
                 elif source == "exchangerate":
-                    rate = await self._fetch_exchangerate(from_currency, to_currency)
+                    rate = await self._fetch_exchangerate(base_currency, quote_currency)
                 else:
                     continue
 
@@ -71,8 +71,8 @@ class ForexService:
                     await cache.async_set(
                         cache_key,
                         {
-                            "from_currency": rate.from_currency,
-                            "to_currency": rate.to_currency,
+                            "base_currency": rate.base_currency,
+                            "quote_currency": rate.quote_currency,
                             "rate": rate.rate,
                             "date": rate.date,
                             "source": rate.source,
@@ -88,13 +88,13 @@ class ForexService:
 
         return None
 
-    async def _fetch_frankfurter(self, from_currency: str, to_currency: str) -> Optional[ExchangeRate]:
+    async def _fetch_frankfurter(self, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
         """从 Frankfurter API 获取汇率 (欧洲央行数据)"""
         # 使用配置化的URL
         url = f"{config.datasource.frankfurter_base}/latest"
         params = {
-            "from": from_currency,
-            "to": to_currency,
+            "from": base_currency,
+            "to": quote_currency,
         }
 
         data = await http_client.fetch(url, params=params)
@@ -102,36 +102,36 @@ class ForexService:
         if not data or "rates" not in data:
             return None
 
-        rate = data["rates"].get(to_currency)
+        rate = data["rates"].get(quote_currency)
         if rate is None:
             return None
 
         return ExchangeRate(
-            from_currency=from_currency,
-            to_currency=to_currency,
+            base_currency=base_currency,
+            quote_currency=quote_currency,
             rate=float(rate),
             date=data.get("date", datetime.now().strftime("%Y-%m-%d")),
             source="Frankfurter (ECB)",
         )
 
-    async def _fetch_exchangerate(self, from_currency: str, to_currency: str) -> Optional[ExchangeRate]:
+    async def _fetch_exchangerate(self, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
         """从 ExchangeRate-API 获取汇率"""
         # 使用免费的公开 API
         # 使用配置化的URL
-        url = f"{config.datasource.exchangerate_base}/v6/latest/{from_currency}"
+        url = f"{config.datasource.exchangerate_base}/v6/latest/{base_currency}"
 
         data = await http_client.fetch(url)
 
         if not data or "rates" not in data:
             return None
 
-        rate = data["rates"].get(to_currency)
+        rate = data["rates"].get(quote_currency)
         if rate is None:
             return None
 
         return ExchangeRate(
-            from_currency=from_currency,
-            to_currency=to_currency,
+            base_currency=base_currency,
+            quote_currency=quote_currency,
             rate=float(rate),
             date=datetime.now().strftime("%Y-%m-%d"),
             source="ExchangeRate-API",
@@ -160,13 +160,13 @@ class ForexService:
 
         for result in results:
             if isinstance(result, ExchangeRate):
-                rates[result.to_currency] = result
+                rates[result.quote_currency] = result
 
         # 存入缓存
         cache_data = {
             code: {
-                "from_currency": rate.from_currency,
-                "to_currency": rate.to_currency,
+                "base_currency": rate.base_currency,
+                "quote_currency": rate.quote_currency,
                 "rate": rate.rate,
                 "date": rate.date,
                 "source": rate.source,

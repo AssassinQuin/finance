@@ -23,7 +23,7 @@ class QuoteStore(BaseStore[Quote]):
             name=row.get("name", ""),
             price=float(row.get("price", 0)),
             change_percent=float(row.get("change_pct", 0)),
-            update_time=row.get("quote_time").isoformat() if row.get("quote_time") else "",
+            update_time=row.get("quote_time") if row.get("quote_time") else datetime.now(),
             market=row.get("exchange", ""),
             type=row.get("type", "stock"),
             volume=str(row.get("volume", "")),

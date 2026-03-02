@@ -211,3 +211,62 @@ class DataSourceConfig(BaseSettings):
 
 # 全局数据源配置实例
 datasource_config = DataSourceConfig()
+
+
+class SymbolRegistry:
+    """统一符号解析服务 - 将用户代码转换为 API 代码"""
+    
+    def __init__(self, datasource: DataSourceConfig):
+        self.datasource = datasource
+    
+    def resolve_api_code(self, code: str, market: 'Market') -> str:
+        """根据市场和代码解析 API 代码
+        
+        Args:
+            code: 用户输入的代码 (e.g., "600519", "AAPL")
+            market: 市场类型 (CN/HK/US)
+            
+        Returns:
+            API 代码 (e.g., "sh600519", "gb_aapl")
+            
+        Raises:
+            ValueError: 不支持的市场类型
+        """
+        # 导入 Market 枚举（避免循环导入）
+        from .models.base import Market
+        
+        if market == Market.CN:
+            return self.datasource.sina.get_cn_code(code)
+        elif market == Market.HK:
+            return self.datasource.sina.get_hk_code(code)
+        elif market == Market.US:
+            return self.datasource.sina.get_us_code(code)
+        else:
+            raise ValueError(f"Unsupported market: {market}")
+    
+    def infer_market(self, code: str) -> 'Market':
+        """从代码推断市场类型
+        
+        Args:
+            code: 股票代码
+            
+        Returns:
+            推断的市场类型
+        """
+        from .models.base import Market
+        
+        # A股: 6位数字，以 0/3/6 开头
+        if code.isdigit() and len(code) == 6:
+            return Market.CN
+        # 港股: 5位数字
+        if code.isdigit() and len(code) == 5:
+            return Market.HK
+        # 美股: 字母
+        if code.isalpha():
+            return Market.US
+        # 默认美股
+        return Market.US
+
+
+# 全局符号注册表实例
+symbol_registry = SymbolRegistry(datasource_config)
