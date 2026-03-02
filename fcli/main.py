@@ -111,17 +111,18 @@ async def _gold(update: bool) -> None:
         
         # 获取最新数据（自动检测并更新过期数据）
         reserves = await gold_service.fetch_all_with_auto_update(force=update)
-        reserves = await gold_service.fetch_all_with_auto_update(force=update)
-
         if not reserves:
             ConsolePresenter.print_warning("无法获取黄金储备数据")
             return
+
+        # 获取供需数据 (WGC)
+        balance = await gold_service.fetch_global_supply_demand()
 
         # 展示数据
         ConsolePresenter.print_gold_report(
             {
                 "reserves": reserves,
-                "balance": None,  # IMF 不提供 supply/demand 数据
+                "balance": balance,
                 "last_update": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
         )

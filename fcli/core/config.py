@@ -1,7 +1,39 @@
+"""FCLI 配置模块
+
+所有配置文件（.env, config.toml）固定使用项目目录，
+无论命令从哪个目录执行。
+"""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Dict, Any
+import os
+
+# ============================================================
+# 项目目录和配置文件路径（固定使用项目目录）
+# ============================================================
+
+# 项目根目录 (fcli/core 的 parent.parent = 项目根目录)
+PACKAGE_ROOT = Path(__file__).parent.parent.parent
+
+# 配置文件路径（始终使用项目目录）
+PROJECT_ENV_PATH = str(PACKAGE_ROOT / ".env")
+PROJECT_CONFIG_PATH = PACKAGE_ROOT / "config.toml"
+
+# 尝试导入 tomllib (Python 3.11+) 或 tomli
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
+
+
+# ============================================================
+# 各模块配置类
+# ============================================================
 
 
 class DatabaseSettings(BaseSettings):
@@ -13,7 +45,9 @@ class DatabaseSettings(BaseSettings):
     pool_min: int = 2
     pool_max: int = 10
 
-    model_config = SettingsConfigDict(env_prefix="FCLI_DB_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="FCLI_DB_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
+    )
 
 
 class TradingHoursSettings(BaseSettings):
@@ -29,20 +63,43 @@ class TradingHoursSettings(BaseSettings):
     us_pre_market_end: str = Field(default="04:00")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_TRADING_HOURS_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_TRADING_HOURS_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
 class CacheSettings(BaseSettings):
-    search_ttl: int = Field(default=86400)
-    quote_ttl: int = Field(default=300)
-    quote_ttl_trading: int = Field(default=30)
-    forex_ttl: int = Field(default=3600)
-    gold_ttl: int = Field(default=86400)
-    gpr_ttl: int = Field(default=86400)
+    """缓存配置 - 支持基于资产类型的差异化TTL"""
+
+    # 通用TTL
+    default_ttl: int = Field(default=300, description="默认缓存TTL")
+    search_ttl: int = Field(default=86400, description="搜索结果缓存TTL")
+
+    # 股票TTL
+    stock_trading_ttl: int = Field(default=30, description="股票交易时段TTL")
+    stock_non_trading_ttl: int = Field(default=300, description="股票非交易时段TTL")
+
+    # 基金TTL
+    fund_trading_ttl: int = Field(default=60, description="基金交易时段TTL")
+    fund_non_trading_ttl: int = Field(default=300, description="基金非交易时段TTL")
+
+    # 指数TTL
+    index_trading_ttl: int = Field(default=30, description="指数交易时段TTL")
+    index_non_trading_ttl: int = Field(default=300, description="指数非交易时段TTL")
+
+    # 其他资产TTL
+    forex_ttl: int = Field(default=3600, description="外汇TTL (1小时)")
+    bond_ttl: int = Field(default=7200, description="债券TTL (2小时)")
+    gold_ttl: int = Field(default=86400, description="黄金TTL (1天)")
+    gpr_ttl: int = Field(default=86400, description="地缘风险TTL (1天)")
+
+    # 兼容旧配置
+    quote_ttl: int = Field(default=300, description="[兼容] 非交易时段TTL")
+    quote_ttl_trading: int = Field(default=30, description="[兼容] 交易时段TTL")
+    quote_short_ttl: int = Field(default=300, description="[兼容] 短TTL")
+    quote_long_ttl: int = Field(default=3600, description="[兼容] 长TTL")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_CACHE_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_CACHE_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
@@ -58,7 +115,7 @@ class RedisSettings(BaseSettings):
     pool_size: int = Field(default=10, description="连接池大小")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_REDIS_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_REDIS_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
@@ -72,7 +129,7 @@ class HttpSettings(BaseSettings):
     max_concurrent: int = Field(default=10, description="最大并发请求数")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_HTTP_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_HTTP_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
@@ -110,7 +167,7 @@ class DisplaySettings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_DISPLAY_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_DISPLAY_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
@@ -122,7 +179,7 @@ class ProxySettings(BaseSettings):
     enabled: bool = Field(default=False)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_PROXY_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_PROXY_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
@@ -135,7 +192,7 @@ class ApiKeySettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_API_",
-        env_file=".env",
+        env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -149,25 +206,120 @@ class GoldSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_GOLD_",
-        env_file=".env",
+        env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
 
 class SourceSettings(BaseSettings):
+    """数据源配置"""
+
     quote_priority: List[str] = Field(default=["eastmoney", "sina", "yahoo"])
     forex_priority: List[str] = Field(default=["frankfurter", "exchangerate"])
     gold_priority: List[str] = Field(default=["fred", "imf"])
     fallback_enabled: bool = True
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_SOURCE_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_prefix="FCLI_SOURCE_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
     )
 
 
-# Package root directory
-PACKAGE_ROOT = Path(__file__).parent.parent.parent
+class DataSourceSettings(BaseSettings):
+    """数据源URL配置 - 消除硬编码"""
+
+    # 新浪
+    sina_base_url: str = Field(default="https://hq.sinajs.cn")
+    sina_cn_quote: str = Field(default="https://hq.sinajs.cn/list={code}")
+
+    # 东方财富
+    eastmoney_quote_api: str = Field(default="https://push2.eastmoney.com/api/qt/stock/get")
+    eastmoney_batch_api: str = Field(default="https://push2.eastmoney.com/api/qt/ulist.np/get")
+
+    # 天天基金
+    fund_gz_api: str = Field(default="https://fundgz.1234567.com.cn/js/{code}.js")
+
+    # 汇率
+    frankfurter_base: str = Field(default="https://api.frankfurter.app")
+    exchangerate_base: str = Field(default="https://api.exchangerate.host")
+
+    # 黄金
+    fred_base_url: str = Field(default="https://api.stlouisfed.org/fred")
+    imf_base_url: str = Field(default="https://dataservices.imf.org/REST/SDMX_JSON.svc")
+
+    # GPR
+    gpr_data_url: str = Field(default="https://www.matteoiacoviello.com/gpr_files/data_gpr_final.xls")
+
+    model_config = SettingsConfigDict(
+        env_prefix="FCLI_DATASOURCE_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
+    )
+
+
+# ============================================================
+# TOML 配置加载（固定使用项目目录）
+# ============================================================
+
+
+def _load_toml_config() -> Dict[str, Any]:
+    """加载项目目录下的 config.toml
+
+    Returns:
+        配置字典，如果加载失败返回空字典
+    """
+    if tomllib is None:
+        return {}
+
+    if not PROJECT_CONFIG_PATH.exists():
+        return {}
+
+    try:
+        with open(PROJECT_CONFIG_PATH, "rb") as f:
+            return tomllib.load(f)
+    except Exception as e:
+        import warnings
+
+        warnings.warn(f"Failed to load config from {PROJECT_CONFIG_PATH}: {e}")
+        return {}
+
+
+def _merge_toml_to_settings(toml_config: Dict[str, Any], settings: "Settings") -> None:
+    """将 TOML 配置合并到 Settings 实例
+
+    优先级: 环境变量 > TOML 配置 > 默认值
+    """
+    if not toml_config:
+        return
+
+    # 映射 TOML section 到 Settings 属性
+    section_mapping = {
+        "cache": "cache",
+        "datasource": "datasource",
+        "source": "source",
+        "http": "http",
+        "redis": "redis",
+        "trading_hours": "trading_hours",
+        "gold": "gold",
+        "display": "display",
+        "proxy": "proxy",
+        "db": "db",
+    }
+
+    for section, attr_name in section_mapping.items():
+        if section in toml_config:
+            section_config = toml_config[section]
+            if hasattr(settings, attr_name):
+                sub_settings = getattr(settings, attr_name)
+                for key, value in section_config.items():
+                    if hasattr(sub_settings, key):
+                        # 只有当环境变量没有设置时才使用 TOML 值
+                        env_key = f"FCLI_{section.upper()}_{key.upper()}"
+                        if env_key not in os.environ:
+                            setattr(sub_settings, key, value)
+
+
+# ============================================================
+# 主配置类
+# ============================================================
 
 
 class Settings(BaseSettings):
@@ -180,13 +332,41 @@ class Settings(BaseSettings):
     api: ApiKeySettings = Field(default_factory=ApiKeySettings)
     gold: GoldSettings = Field(default_factory=GoldSettings)
     source: SourceSettings = Field(default_factory=SourceSettings)
+    datasource: DataSourceSettings = Field(default_factory=DataSourceSettings)
     http: HttpSettings = Field(default_factory=HttpSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
+
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_", env_file=".env", env_file_encoding="utf-8", extra="ignore", env_nested_delimiter="__"
+        env_prefix="FCLI_",
+        env_file=PROJECT_ENV_PATH,
+        env_file_encoding="utf-8",
+        extra="ignore",
+        env_nested_delimiter="__",
     )
 
 
+# ============================================================
+# 初始化配置
+# ============================================================
+
+# 创建配置实例
 config = Settings()
+
+# 加载并合并 TOML 配置
+_toml_config = _load_toml_config()
+_merge_toml_to_settings(_toml_config, config)
+
+# 别名
 settings = config
+
+
+# 导出公共接口
+__all__ = [
+    "config",
+    "settings",
+    "Settings",
+    "PACKAGE_ROOT",
+    "PROJECT_ENV_PATH",
+    "PROJECT_CONFIG_PATH",
+]

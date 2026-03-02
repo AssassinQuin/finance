@@ -99,13 +99,13 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         sql = """
         INSERT INTO watchlist_assets
             (code, api_code, name, market, type, extra, is_active, added_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) AS new
         ON DUPLICATE KEY UPDATE
-            api_code = VALUES(api_code),
-            name = VALUES(name),
-            market = VALUES(market),
-            type = VALUES(type),
-            extra = VALUES(extra),
+            api_code = new.api_code,
+            name = new.name,
+            market = new.market,
+            type = new.type,
+            extra = new.extra,
             is_active = TRUE,
             updated_at = NOW()
         """

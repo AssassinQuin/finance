@@ -3,6 +3,7 @@
 from .base import Market, AssetType
 from .asset import Asset, Quote, ExchangeRate
 from .gold import GoldReserve, CentralBankSchedule
+from .gold_supply_demand import GoldSupplyDemand
 from .log import FetchLog, WatchlistAssetDB
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     # Gold models
     "GoldReserve",
     "CentralBankSchedule",
+    "GoldSupplyDemand",
     # System models
     "FetchLog",
     "WatchlistAssetDB",

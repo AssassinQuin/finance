@@ -226,16 +226,59 @@ class RedisCache(BaseCache):
 
 
 class HybridCache(BaseCache):
-    """混合缓存：Redis 优先，自动降级到文件缓存"""
+    """混合缓存：Redis 优先，自动降级到文件缓存
+    
+    初始化时会 ping Redis 判断是否可用，若不可用则自动使用文件缓存。
+    """
 
     def __init__(self):
         self._file_cache = FileCache()
         self._redis_cache: Optional[RedisCache] = None
         self._use_redis = config.redis.enabled
-        self._redis_failed = False
+        self._redis_available = False
+        self._last_health_check = 0
+        self._health_check_interval = 60  # 健康检查间隔（秒）
 
-        if self._use_redis:
+    async def _check_redis_health(self) -> bool:
+        """检查 Redis 健康状态
+        
+        使用 ping 命令检测 Redis 是否可用。
+        不会频繁检查，有 60 秒的间隔限制。
+        
+        Returns:
+            True 如果 Redis 可用
+        """
+        current_time = time.time()
+        
+        # 限制检查频率
+        if current_time - self._last_health_check < self._health_check_interval:
+            return self._redis_available
+        
+        self._last_health_check = current_time
+        
+        if not self._use_redis:
+            self._redis_available = False
+            return False
+        
+        # 延迟初始化 Redis 客户端
+        if self._redis_cache is None:
             self._redis_cache = RedisCache()
+        
+        # 尝试连接并 ping
+        try:
+            connected = await self._redis_cache._connect()
+            if connected:
+                # 额外 ping 测试
+                await self._redis_cache._redis.ping()
+                self._redis_available = True
+                logger.debug("Redis health check passed")
+            else:
+                self._redis_available = False
+        except Exception as e:
+            logger.warning(f"Redis health check failed: {e}")
+            self._redis_available = False
+        
+        return self._redis_available
 
     def get(self, key: str) -> Optional[Any]:
         """同步获取 - 使用文件缓存"""
@@ -255,13 +298,13 @@ class HybridCache(BaseCache):
 
     async def async_get(self, key: str) -> Optional[Any]:
         """异步获取 - 优先 Redis，降级到文件"""
-        if self._use_redis and not self._redis_failed and self._redis_cache:
+        # 检查 Redis 健康状态
+        if await self._check_redis_health():
             data = await self._redis_cache.async_get(key)
             if data is not None:
                 return data
-            # Redis 获取失败，降级到文件缓存
-            self._redis_failed = True
-            logger.info("Redis unavailable, falling back to file cache")
+            # Redis 没有数据或获取失败，降级到文件缓存
+            logger.debug(f"Redis miss for key {key}, falling back to file cache")
 
         return self._file_cache.get(key)
 
@@ -271,20 +314,25 @@ class HybridCache(BaseCache):
         self._file_cache.set(key, data, ttl)
 
         # 尝试写入 Redis
-        if self._use_redis and self._redis_cache:
+        if await self._check_redis_health():
             await self._redis_cache.async_set(key, data, ttl)
 
     async def async_delete(self, key: str):
         """异步删除"""
         self._file_cache.delete(key)
-        if self._use_redis and self._redis_cache:
+        if self._redis_cache:
             await self._redis_cache.async_delete(key)
 
     async def async_clear(self):
         """异步清空"""
         self._file_cache.clear()
-        if self._use_redis and self._redis_cache:
+        if self._redis_cache:
             await self._redis_cache.async_clear()
+    
+    @property
+    def is_redis_available(self) -> bool:
+        """返回 Redis 是否可用"""
+        return self._redis_available
 
 
 # 全局缓存实例

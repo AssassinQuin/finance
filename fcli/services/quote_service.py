@@ -3,11 +3,12 @@ from datetime import datetime
 import re
 import json
 from ..utils.logger import quote_logger as logger, LogContext
+from ..utils.time_util import is_trading_hours
 from ..core.cache import cache
 from ..core.config import config
 from ..core.models import Asset, Quote, Market, AssetType
 from ..infra.http_client import http_client
-from ..utils.time_util import is_trading_hours, get_cache_ttl
+from ..core.cache_strategy import default_cache_strategy
 
 
 class QuoteService:
@@ -42,7 +43,8 @@ class QuoteService:
                     continue
 
                 if quote:
-                    ttl = get_cache_ttl(asset.market)
+                    # 使用基于资产类型的缓存策略
+                    ttl = default_cache_strategy.get_ttl(asset.type, asset.market)
                     await cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
                     logger.info(
                         "Quote fetched",
@@ -94,7 +96,8 @@ class QuoteService:
         return None
 
     async def _fetch_fund_1234567(self, asset: Asset) -> Optional[Quote]:
-        url = f"https://fundgz.1234567.com.cn/js/{asset.api_code}.js"
+        # 使用配置化的URL
+        url = config.datasource.fund_gz_api.format(code=asset.api_code)
         text = await http_client.fetch(url, text_mode=True)
 
         if not text or "jsonpgz" not in text:
@@ -155,7 +158,8 @@ class QuoteService:
 
     async def _fetch_sina_cn(self, asset: Asset) -> Optional[Quote]:
         code = asset.api_code
-        url = f"https://hq.sinajs.cn/list={code}"
+        # 使用配置化的URL
+        url = config.datasource.sina_cn_quote.format(code=code)
         text = await http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -190,7 +194,8 @@ class QuoteService:
 
     async def _fetch_sina_hk(self, asset: Asset) -> Optional[Quote]:
         code = asset.api_code
-        url = f"https://hq.sinajs.cn/list={code}"
+        # 使用配置化的URL
+        url = config.datasource.sina_cn_quote.format(code=code)
         text = await http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -225,7 +230,8 @@ class QuoteService:
 
     async def _fetch_sina_us(self, asset: Asset) -> Optional[Quote]:
         code = asset.api_code
-        url = f"https://hq.sinajs.cn/list={code}"
+        # 使用配置化的URL
+        url = config.datasource.sina_cn_quote.format(code=code)
         text = await http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -260,7 +266,8 @@ class QuoteService:
 
     async def _fetch_sina_global(self, asset: Asset) -> Optional[Quote]:
         code = asset.api_code
-        url = f"https://hq.sinajs.cn/list={code}"
+        # 使用配置化的URL
+        url = config.datasource.sina_cn_quote.format(code=code)
         text = await http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -304,7 +311,7 @@ class QuoteService:
         if not secid:
             return None
 
-        url = f"https://push2.eastmoney.com/api/qt/stock/get"
+        url = config.datasource.eastmoney_quote_api
         params = {
             "secid": secid,
             "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f162,f163,f166,f169,f170,f171,f184",
@@ -427,9 +434,9 @@ class QuoteService:
         if not assets:
             return []
 
-        # 构建批量请求 URL
+        # 构建批量请求 URL - 使用配置化的URL
         codes = [asset.api_code for asset in assets]
-        url = f"https://hq.sinajs.cn/list={','.join(codes)}"
+        url = f"{config.datasource.sina_base_url}/list={','.join(codes)}"
 
         try:
             text = await http_client.fetch(url, text_mode=True)
@@ -462,8 +469,9 @@ class QuoteService:
                 quote = self._parse_sina_data(asset, data_str, market)
                 if quote:
                     quotes.append(quote)
+                    # 使用基于资产类型的缓存策略
+                    ttl = default_cache_strategy.get_ttl(asset.type, asset.market)
                     cache_key = f"quote:{asset.code}"
-                    ttl = get_cache_ttl(asset.market)
                     await cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
 
             return quotes
@@ -553,7 +561,8 @@ class QuoteService:
         if not secids:
             return []
 
-        url = "https://push2.eastmoney.com/api/qt/ulist.np/get"
+        # 使用配置化的URL
+        url = config.datasource.eastmoney_batch_api
         params = {
             "fltt": 2,
             "invt": 2,
@@ -596,8 +605,9 @@ class QuoteService:
                 )
             )
 
+            # 使用基于资产类型的缓存策略
+            ttl = default_cache_strategy.get_ttl(asset.type, asset.market)
             cache_key = f"quote:{asset.code}"
-            ttl = get_cache_ttl(asset.market)
             await cache.async_set(cache_key, self._quote_to_dict(quotes[-1]), ttl)
 
         return quotes

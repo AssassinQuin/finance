@@ -40,15 +40,15 @@ class GoldReserveStore(BaseStore[GoldReserve]):
         INSERT INTO gold_reserves
             (country_code, country_name, amount_tonnes, gold_share_pct, gold_value_usd_m,
              percent_of_reserves, report_date, data_source, fetch_time)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) AS new
         ON DUPLICATE KEY UPDATE
-            country_name = VALUES(country_name),
-            amount_tonnes = VALUES(amount_tonnes),
-            gold_share_pct = VALUES(gold_share_pct),
-            gold_value_usd_m = VALUES(gold_value_usd_m),
-            percent_of_reserves = VALUES(percent_of_reserves),
-            data_source = VALUES(data_source),
-            fetch_time = VALUES(fetch_time)
+            country_name = new.country_name,
+            amount_tonnes = new.amount_tonnes,
+            gold_share_pct = new.gold_share_pct,
+            gold_value_usd_m = new.gold_value_usd_m,
+            percent_of_reserves = new.percent_of_reserves,
+            data_source = new.data_source,
+            fetch_time = new.fetch_time
         """
 
         async with cls._pool().acquire() as conn:
@@ -302,14 +302,14 @@ class CentralBankScheduleStore(BaseStore[CentralBankSchedule]):
         INSERT INTO central_bank_schedules
             (country_code, country_name, release_day, release_frequency,
              last_release_date, next_expected_date, is_active)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s) AS new
         ON DUPLICATE KEY UPDATE
-            country_name = VALUES(country_name),
-            release_day = VALUES(release_day),
-            release_frequency = VALUES(release_frequency),
-            last_release_date = VALUES(last_release_date),
-            next_expected_date = VALUES(next_expected_date),
-            is_active = VALUES(is_active),
+            country_name = new.country_name,
+            release_day = new.release_day,
+            release_frequency = new.release_frequency,
+            last_release_date = new.last_release_date,
+            next_expected_date = new.next_expected_date,
+            is_active = new.is_active,
             updated_at = NOW()
         """
 

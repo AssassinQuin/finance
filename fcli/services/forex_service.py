@@ -90,7 +90,8 @@ class ForexService:
 
     async def _fetch_frankfurter(self, from_currency: str, to_currency: str) -> Optional[ExchangeRate]:
         """从 Frankfurter API 获取汇率 (欧洲央行数据)"""
-        url = f"https://api.frankfurter.app/latest"
+        # 使用配置化的URL
+        url = f"{config.datasource.frankfurter_base}/latest"
         params = {
             "from": from_currency,
             "to": to_currency,
@@ -116,7 +117,8 @@ class ForexService:
     async def _fetch_exchangerate(self, from_currency: str, to_currency: str) -> Optional[ExchangeRate]:
         """从 ExchangeRate-API 获取汇率"""
         # 使用免费的公开 API
-        url = f"https://open.er-api.com/v6/latest/{from_currency}"
+        # 使用配置化的URL
+        url = f"{config.datasource.exchangerate_base}/v6/latest/{from_currency}"
 
         data = await http_client.fetch(url)
 

@@ -152,6 +152,36 @@ async def create_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Gold supply/demand quarterly data
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS gold_supply_demand (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    year INT NOT NULL,
+                    quarter TINYINT NOT NULL,
+                    period VARCHAR(20) NOT NULL,
+                    mine_production DECIMAL(12,2) DEFAULT 0,
+                    recycling DECIMAL(12,2) DEFAULT 0,
+                    net_hedging DECIMAL(12,2) DEFAULT 0,
+                    total_supply DECIMAL(12,2) DEFAULT 0,
+                    jewelry DECIMAL(12,2) DEFAULT 0,
+                    technology DECIMAL(12,2) DEFAULT 0,
+                    total_investment DECIMAL(12,2) DEFAULT 0,
+                    bars_coins DECIMAL(12,2) DEFAULT 0,
+                    etfs DECIMAL(12,2) DEFAULT 0,
+                    otc_investment DECIMAL(12,2) DEFAULT 0,
+                    central_banks DECIMAL(12,2) DEFAULT 0,
+                    total_demand DECIMAL(12,2) DEFAULT 0,
+                    supply_demand_balance DECIMAL(12,2) DEFAULT 0,
+                    price_avg_usd DECIMAL(12,2),
+                    data_source VARCHAR(50),
+                    fetch_time DATETIME,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_year_quarter (year, quarter),
+                    INDEX idx_year (year)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             print("Tables created successfully")
 
 
@@ -189,6 +219,7 @@ async def rollback():
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 tables = [
+                    "gold_supply_demand",
                     "gpr_history",
                     "watchlist_assets",
                     "exchange_rates",

@@ -42,14 +42,14 @@ class QuoteStore(BaseStore[Quote]):
         INSERT INTO quotes
             (symbol, name, type, exchange, price, change_pct, volume,
              quote_date, quote_time, data_source, extra_data)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) AS new
         ON DUPLICATE KEY UPDATE
-            name = VALUES(name),
-            price = VALUES(price),
-            change_pct = VALUES(change_pct),
-            volume = VALUES(volume),
-            quote_time = VALUES(quote_time),
-            extra_data = VALUES(extra_data),
+            name = new.name,
+            price = new.price,
+            change_pct = new.change_pct,
+            volume = new.volume,
+            quote_time = new.quote_time,
+            extra_data = new.extra_data,
             updated_at = NOW()
         """
 

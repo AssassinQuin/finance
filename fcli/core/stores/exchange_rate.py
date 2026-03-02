@@ -36,10 +36,10 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
         sql = """
         INSERT INTO exchange_rates
             (from_currency, to_currency, rate, rate_date, data_source)
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s) AS new
         ON DUPLICATE KEY UPDATE
-            rate = VALUES(rate),
-            data_source = VALUES(data_source),
+            rate = new.rate,
+            data_source = new.data_source,
             updated_at = NOW()
         """
 

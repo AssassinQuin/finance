@@ -245,7 +245,7 @@ class ConsolePresenter:
                     "净套期保值",
                     supply.get("net_hedging"),
                     "投资需求",
-                    demand.get("investment"),
+                    demand.get("investment", {}).get("total"),
                 ),
                 ("", None, "央行净购入", demand.get("central_banks")),
                 ("总供应", supply.get("total"), "总需求", demand.get("total")),
@@ -461,7 +461,7 @@ class ConsolePresenter:
             rows = [
                 ("矿产", supply.get("mine_production"), "金饰", demand.get("jewelry")),
                 ("回收", supply.get("recycling"), "科技", demand.get("technology")),
-                ("套保", supply.get("net_hedging"), "投资", demand.get("investment")),
+                ("套保", supply.get("net_hedging"), "投资", demand.get("investment", {}).get("total")),
                 ("", None, "央行", demand.get("central_banks")),
             ]
 

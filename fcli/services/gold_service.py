@@ -11,8 +11,11 @@ from typing import Dict, List, Optional
 from ..core.config import config
 from ..core.database import Database
 from ..core.models import GoldReserve
+from ..core.models.gold_supply_demand import GoldSupplyDemand
 from ..core.stores import GoldReserveStore
+from ..core.stores.gold_supply_demand import GoldSupplyDemandStore
 from .scrapers.imf_scraper import IMFScraper, GOLD_COUNTRY_CODES
+from .scrapers.wgc_scraper import WGCScraper, QuarterlySupplyDemand
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ class GoldService:
 
     def __init__(self):
         self._imf_scraper = IMFScraper()
+        self._wgc_scraper = WGCScraper()
 
     async def init_database(self) -> bool:
         """Initialize database connection"""
@@ -38,6 +42,8 @@ class GoldService:
         """Close HTTP client session"""
         if self._imf_scraper:
             await self._imf_scraper.close()
+        if self._wgc_scraper:
+            await self._wgc_scraper.close()
 
     async def _check_and_update_stale_data(self, country_codes: Optional[List[str]] = None) -> None:
         """
@@ -361,18 +367,164 @@ class GoldService:
             logger.error(f"Failed to fetch from IMF: {e}")
             return []
 
-    async def fetch_global_supply_demand(self) -> Optional[Dict]:
+    async def fetch_global_supply_demand(self, force_update: bool = False) -> Optional[Dict]:
         """
-        Fetch global gold supply/demand balance data.
-
-        Note: IMF does not provide supply/demand breakdown.
-        This method returns None to indicate data is not available.
-
+        Fetch global gold supply/demand balance data from WGC.
+        
+        Data source: World Gold Council (gold.org)
+        - Quarterly supply/demand statistics
+        - Mine production, recycling, hedging (supply)
+        - Jewelry, technology, investment, central banks (demand)
+        
+        Args:
+            force_update: Force refresh from WGC and save to database
+        
         Returns:
-            None (supply/demand data not available from IMF)
+            Dict with supply and demand breakdown, or None if unavailable
         """
-        logger.warning("Supply/demand data not available from IMF API")
-        return None
+        # Try database first (unless force update)
+        if not force_update and Database.is_enabled():
+            try:
+                db_data = await GoldSupplyDemandStore.get_latest()
+                if db_data:
+                    return self._supply_demand_to_dict(db_data)
+            except Exception as e:
+                logger.error(f"Failed to get supply/demand from database: {e}")
+        
+        # Fetch from WGC
+        try:
+            data = await self._wgc_scraper.fetch_supply_demand()
+            if not data:
+                return None
+            
+            # Save to database if enabled
+            if Database.is_enabled():
+                try:
+                    db_model = GoldSupplyDemand(
+                        year=data.year,
+                        quarter=data.quarter,
+                        period=data.period,
+                        mine_production=data.supply.mine_production,
+                        recycling=data.supply.recycling,
+                        net_hedging=data.supply.net_hedging,
+                        total_supply=data.supply.total_supply,
+                        jewelry=data.demand.jewelry,
+                        technology=data.demand.technology,
+                        total_investment=data.demand.total_investment,
+                        bars_coins=data.demand.bars_coins,
+                        etfs=data.demand.etfs,
+                        otc_investment=data.demand.otc_investment,
+                        central_banks=data.demand.central_banks,
+                        total_demand=data.demand.total_demand,
+                        supply_demand_balance=data.supply.total_supply - data.demand.total_demand,
+                        price_avg_usd=data.price_avg,
+                        data_source="WGC",
+                        fetch_time=datetime.now(),
+                    )
+                    await GoldSupplyDemandStore.save_quarterly(db_model)
+                    logger.info(f"Saved supply/demand data for {data.period} to database")
+                except Exception as e:
+                    logger.error(f"Failed to save supply/demand to database: {e}")
+            
+            return {
+                "period": data.period,
+                "year": data.year,
+                "quarter": data.quarter,
+                "supply": {
+                    "mine_production": data.supply.mine_production,
+                    "recycling": data.supply.recycling,
+                    "net_hedging": data.supply.net_hedging,
+                    "total": data.supply.total_supply,
+                },
+                "demand": {
+                    "jewelry": data.demand.jewelry,
+                    "technology": data.demand.technology,
+                    "investment": {
+                        "total": data.demand.total_investment,
+                        "bars_coins": data.demand.bars_coins,
+                        "etfs": data.demand.etfs,
+                        "otc": data.demand.otc_investment,
+                    },
+                    "central_banks": data.demand.central_banks,
+                    "total": data.demand.total_demand,
+                },
+                "price_avg": data.price_avg,
+                "source": "WGC",
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch supply/demand data: {e}")
+            return None
+    
+    def _supply_demand_to_dict(self, db_data: GoldSupplyDemand) -> Dict:
+        """Convert database model to API dict format."""
+        return {
+            "period": db_data.period,
+            "year": db_data.year,
+            "quarter": db_data.quarter,
+            "supply": {
+                "mine_production": db_data.mine_production,
+                "recycling": db_data.recycling,
+                "net_hedging": db_data.net_hedging,
+                "total": db_data.total_supply,
+            },
+            "demand": {
+                "jewelry": db_data.jewelry,
+                "technology": db_data.technology,
+                "investment": {
+                    "total": db_data.total_investment,
+                    "bars_coins": db_data.bars_coins,
+                    "etfs": db_data.etfs,
+                    "otc": db_data.otc_investment,
+                },
+                "central_banks": db_data.central_banks,
+                "total": db_data.total_demand,
+            },
+            "price_avg": db_data.price_avg_usd,
+            "source": db_data.data_source or "WGC",
+        }
+    
+    async def get_supply_demand_history(self, limit: int = 8) -> List[Dict]:
+        """
+        Get historical supply/demand data from database.
+        
+        Args:
+            limit: Number of quarters to return (default 8 = 2 years)
+        
+        Returns:
+            List of supply/demand data by quarter (newest first)
+        """
+        if not Database.is_enabled():
+            return []
+        
+        try:
+            history = await GoldSupplyDemandStore.get_history(limit)
+            return [self._supply_demand_to_dict(item) for item in history]
+        except Exception as e:
+            logger.error(f"Failed to get supply/demand history: {e}")
+            return []
+    
+    async def get_supply_demand_by_quarter(self, year: int, quarter: int) -> Optional[Dict]:
+        """
+        Get supply/demand data for a specific quarter.
+        
+        Args:
+            year: Year (e.g. 2024)
+            quarter: Quarter (1-4)
+        
+        Returns:
+            Supply/demand data or None if not found
+        """
+        if not Database.is_enabled():
+            return None
+        
+        try:
+            data = await GoldSupplyDemandStore.get_by_quarter(year, quarter)
+            if data:
+                return self._supply_demand_to_dict(data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get supply/demand for {year}Q{quarter}: {e}")
+            return None
 
     async def get_china_history_online(self, months: int = 60) -> List[Dict]:
         """
