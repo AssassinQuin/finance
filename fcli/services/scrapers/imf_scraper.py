@@ -272,7 +272,7 @@ class IMFScraper:
                             continue
 
         except Exception as e:
-            logger.warning(f"Error parsing IMF response: {e}")
+            logger.debug(f"Error parsing IMF response: {e}")
 
         return result
 
@@ -356,7 +356,7 @@ class IMFScraper:
         valid_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.warning(f"Error fetching {country_codes[i]}: {result}")
+                logger.debug(f"Error fetching {country_codes[i]}: {result}")
             elif result:
                 valid_results.append(result)
 
@@ -386,7 +386,7 @@ class IMFScraper:
         valid_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.warning(f"Error fetching history for {country_codes[i]}: {result}")
+                logger.debug(f"Error fetching history for {country_codes[i]}: {result}")
             elif result and result.get("data"):
                 valid_results.append(result)
 

@@ -67,7 +67,7 @@ class StructuredFormatter(logging.Formatter):
 class StructuredLogger:
     """结构化日志器"""
 
-    def __init__(self, name: str, level: int = logging.INFO):
+    def __init__(self, name: str, level: int = logging.ERROR):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
 
@@ -78,6 +78,11 @@ class StructuredLogger:
             self.logger.addHandler(handler)
 
     def _log(self, level: int, message: str, context: Optional[LogContext] = None, **kwargs):
+        """内部日志方法 - 只输出 ERROR 及以上级别"""
+        if level < logging.ERROR:
+            return
+        extra = {"context": context} if context else {}
+        self.logger.log(level, message, extra=extra, **kwargs)
         """内部日志方法"""
         extra = {"context": context} if context else {}
         self.logger.log(level, message, extra=extra, **kwargs)

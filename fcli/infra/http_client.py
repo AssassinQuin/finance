@@ -58,10 +58,13 @@ class HttpClient:
     ) -> Any:
         session = await self.get_session()
 
-        # 配置代理
+        # 配置代理 - 根据 URL 协议选择对应代理
         proxy = None
         if use_proxy and config.proxy.enabled:
-            proxy = config.proxy.http
+            if url.startswith('https://'):
+                proxy = config.proxy.https or config.proxy.http
+            else:
+                proxy = config.proxy.http
 
         for attempt in range(config.http.max_retries):
             try:
@@ -82,11 +85,11 @@ class HttpClient:
                         # Response is not JSON, return as text
                         return await response.text()
             except asyncio.TimeoutError:
-                logger.warning(f"Timeout on attempt {attempt + 1}/{config.http.max_retries}: {url}")
+                logger.debug(f"Timeout on attempt {attempt + 1}/{config.http.max_retries}: {url}")
                 if attempt < config.http.max_retries - 1:
                     await asyncio.sleep(config.http.retry_delay * (attempt + 1))
             except aiohttp.ClientError as e:
-                logger.warning(f"Request failed on attempt {attempt + 1}/{config.http.max_retries}: {e}")
+                logger.debug(f"Request failed on attempt {attempt + 1}/{config.http.max_retries}: {e}")
                 if attempt < config.http.max_retries - 1:
                     await asyncio.sleep(config.http.retry_delay * (attempt + 1))
             except Exception as e:

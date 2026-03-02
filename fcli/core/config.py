@@ -122,10 +122,10 @@ class RedisSettings(BaseSettings):
 class HttpSettings(BaseSettings):
     """HTTP 请求配置"""
 
-    total_timeout: int = Field(default=30, description="请求总超时时间(秒)")
-    connect_timeout: int = Field(default=10, description="连接超时时间(秒)")
-    max_retries: int = Field(default=3, description="最大重试次数")
-    retry_delay: float = Field(default=1.0, description="重试延迟(秒)")
+    total_timeout: int = Field(default=15, description="请求总超时时间(秒)")
+    connect_timeout: int = Field(default=5, description="连接超时时间(秒)")
+    max_retries: int = Field(default=1, description="最大重试次数")
+    retry_delay: float = Field(default=0.5, description="重试延迟(秒)")
     max_concurrent: int = Field(default=10, description="最大并发请求数")
 
     model_config = SettingsConfigDict(
