@@ -357,7 +357,7 @@ class QuoteService:
 
         for asset in assets:
             cache_key = f"quote:{asset.code}"
-            cached = cache.get(cache_key)
+            cached = await cache.async_get(cache_key)
             if cached:
                 in_trading = is_trading_hours(asset.market)
                 if in_trading:

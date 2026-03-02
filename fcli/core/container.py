@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from ..services.gold_service import GoldService
     from ..services.gpr_service import GPRService
     from ..services.quote_service import QuoteService
+    from .cache import HybridCache
     from .cache import Cache
     from .config import Settings
     from .database import Database
@@ -229,11 +230,11 @@ class Container:
 
         return HttpClient(max_retries=3, retry_delay=1.0)
 
-    def _create_cache(self) -> Cache:
+    def _create_cache(self) -> HybridCache:
         """Create cache instance."""
-        from .cache import Cache
+        from .cache import HybridCache
 
-        return Cache()
+        return HybridCache()
 
     def _create_database(self) -> Database:
         """Create database instance (returns class, not instance)."""

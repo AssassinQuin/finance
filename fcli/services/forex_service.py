@@ -52,7 +52,7 @@ class ForexService:
 
         # 检查缓存
         cache_key = f"forex:{from_currency}:{to_currency}"
-        cached = cache.get(cache_key)
+        cached = await cache.async_get(cache_key)
         if cached:
             return ExchangeRate(**cached)
 
@@ -68,7 +68,7 @@ class ForexService:
 
                 if rate:
                     # 存入缓存
-                    cache.set(
+                    await cache.async_set(
                         cache_key,
                         {
                             "from_currency": rate.from_currency,

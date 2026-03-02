@@ -68,6 +68,7 @@ class ConsolePresenter:
     @staticmethod
     def print_quote_table(quotes: List[Quote]):
         table = Table(box=box.SIMPLE, header_style="bold cyan")
+        table.add_column("#", justify="center", style="dim", width=2)
         table.add_column("代码", justify="left", style="green")
         table.add_column("名称", justify="left")
         table.add_column("最新价", justify="right")
@@ -78,7 +79,7 @@ class ConsolePresenter:
 
         sorted_quotes = sorted(quotes, key=lambda q: q.change_percent, reverse=True)
 
-        for quote in sorted_quotes:
+        for i, quote in enumerate(sorted_quotes, 1):
             # Colorize change percent
             change_str = f"{quote.change_percent:+.2f}%"
             if quote.change_percent > 0:
@@ -93,6 +94,7 @@ class ConsolePresenter:
             type_color = TYPE_COLOR.get(quote.type.value, "white")
 
             table.add_row(
+                str(i),
                 quote.code,
                 quote.name,
                 f"{quote.price:.2f}",

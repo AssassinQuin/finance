@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional, Protocol
 
+from .config import config
 from .models.base import Market, AssetType
 
 
@@ -187,5 +188,5 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
         )
 
 
-# 默认缓存策略实例
-default_cache_strategy = AssetTypeCacheStrategy()
+# 从配置加载默认缓存策略
+default_cache_strategy = AssetTypeCacheStrategy.from_config(config)
