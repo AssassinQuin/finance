@@ -40,12 +40,10 @@ class HttpClient:
     ) -> Any:
         # 使用信号量限制并发
         if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(config.http.max_concurrent)
-        
+            self._semaphore = asyncio.Semaphore(config.http.max_concurrent or 10)
+
         async with self._semaphore:
-            return await self._fetch_internal(
-                url, params, text_mode, binary_mode, follow_redirects, use_proxy
-            )
+            return await self._fetch_internal(url, params, text_mode, binary_mode, follow_redirects, use_proxy)
 
     async def _fetch_internal(
         self,
@@ -58,20 +56,22 @@ class HttpClient:
     ) -> Any:
         session = await self.get_session()
 
+        max_retries = config.http.max_retries or 1
+        retry_delay = config.http.retry_delay or 0.5
+        total_timeout = config.http.total_timeout or 30
+        connect_timeout = config.http.connect_timeout or 10
+
         # 配置代理 - 根据 URL 协议选择对应代理
         proxy = None
         if use_proxy and config.proxy.enabled:
-            if url.startswith('https://'):
+            if url.startswith("https://"):
                 proxy = config.proxy.https or config.proxy.http
             else:
                 proxy = config.proxy.http
 
-        for attempt in range(config.http.max_retries):
+        for attempt in range(max_retries):
             try:
-                timeout = aiohttp.ClientTimeout(
-                    total=config.http.total_timeout,
-                    connect=config.http.connect_timeout
-                )
+                timeout = aiohttp.ClientTimeout(total=total_timeout, connect=connect_timeout)
                 async with session.get(
                     url, params=params, timeout=timeout, allow_redirects=follow_redirects, proxy=proxy
                 ) as response:
@@ -85,13 +85,13 @@ class HttpClient:
                         # Response is not JSON, return as text
                         return await response.text()
             except asyncio.TimeoutError:
-                logger.debug(f"Timeout on attempt {attempt + 1}/{config.http.max_retries}: {url}")
-                if attempt < config.http.max_retries - 1:
-                    await asyncio.sleep(config.http.retry_delay * (attempt + 1))
+                logger.debug(f"Timeout on attempt {attempt + 1}/{max_retries}: {url}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
             except aiohttp.ClientError as e:
-                logger.debug(f"Request failed on attempt {attempt + 1}/{config.http.max_retries}: {e}")
-                if attempt < config.http.max_retries - 1:
-                    await asyncio.sleep(config.http.retry_delay * (attempt + 1))
+                logger.debug(f"Request failed on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay * (attempt + 1))
             except Exception as e:
                 logger.error(f"Unexpected error fetching {url}: {e}")
                 break

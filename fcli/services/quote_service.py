@@ -1,4 +1,4 @@
-﻿from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import re
 import json
@@ -31,7 +31,7 @@ class QuoteService:
                 )
                 return Quote(**cached)
 
-        for source in config.source.quote_priority:
+        for source in config.datasource.quote_priority:
             try:
                 if source == "sina":
                     quote = await self._fetch_sina(asset)
@@ -59,7 +59,7 @@ class QuoteService:
                     return quote
             except Exception as e:
                 logger.warning(f"Source {source} failed: {e}")
-                if not config.source.fallback_enabled:
+                if not config.datasource.fallback_enabled:
                     raise
                 continue
 

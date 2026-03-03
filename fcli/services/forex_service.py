@@ -57,7 +57,7 @@ class ForexService:
             return ExchangeRate(**cached)
 
         # 按优先级尝试不同的数据源
-        for source in config.source.forex_priority:
+        for source in config.datasource.forex_priority:
             try:
                 if source == "frankfurter":
                     rate = await self._fetch_frankfurter(base_currency, quote_currency)
@@ -82,7 +82,7 @@ class ForexService:
                     return rate
 
             except Exception as e:
-                if not config.source.fallback_enabled:
+                if not config.datasource.fallback_enabled:
                     raise
                 continue
 

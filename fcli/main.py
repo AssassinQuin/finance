@@ -8,13 +8,12 @@ from typing import Optional, List
 
 from .core.config import config
 from .core.database import Database
-from .core.storage import storage
-from .core.datasource_config import symbol_registry
 from .core.models import Asset, Market, AssetType
 from .services.gold_service import gold_service
 from .services.gpr_service import gpr_service
 from .services.forex_service import forex_service
 from .services.quote_service import quote_service
+from .services.watchlist_service import watchlist_service
 from .infra.http_client import http_client
 from .utils.presenter import ConsolePresenter
 
@@ -36,16 +35,24 @@ def quote(ctx: typer.Context):
 
 
 async def _fetch_quotes() -> None:
-    assets = await storage.load()
+    assets = await watchlist_service.list_assets()
     if not assets:
         ConsolePresenter.print_warning("暂无自选。使用 'fcli add <代码>' 添加。")
         return
-    quotes = await quote_service.fetch_all(assets)
-    if quotes:
-        ConsolePresenter.print_quote_table(quotes)
-    else:
-        ConsolePresenter.print_warning("获取行情失败。")
-    await http_client.close()
+
+    try:
+        quotes = await quote_service.fetch_all(assets)
+        if quotes:
+            ConsolePresenter.print_quote_table(quotes)
+        else:
+            ConsolePresenter.print_warning("获取行情失败 - 返回空数据")
+    except Exception as e:
+        ConsolePresenter.print_error(f"获取行情失败: {e}")
+        import traceback
+
+        traceback.print_exc()
+    finally:
+        await http_client.close()
 
 
 # ============ Watchlist ============
@@ -56,15 +63,7 @@ def add(codes: List[str]):
     """添加自选"""
 
     async def _add() -> int:
-        count = 0
-        for code in codes:
-            # 使用 symbol_registry 推断市场类型并获取 api_code
-            market = symbol_registry.infer_market(code)
-            api_code = symbol_registry.resolve_api_code(code, market)
-            asset = Asset(code=code, api_code=api_code, name=code, market=market, type=AssetType.STOCK)
-            if await storage.add(asset):
-                count += 1
-        return count
+        return await watchlist_service.add_assets(codes)
 
     count = asyncio.run(_add())
     ConsolePresenter.print_success(f"已添加 {count} 个自选")
@@ -75,7 +74,7 @@ def rm(code: str):
     """删除自选"""
 
     async def _rm() -> bool:
-        return await storage.remove(code)
+        return await watchlist_service.remove_asset(code)
 
     if asyncio.run(_rm()):
         ConsolePresenter.print_success(f"已删除 {code}")
@@ -86,7 +85,7 @@ def rm(code: str):
 @app.command()
 def ls():
     """列出所有自选"""
-    assets = asyncio.run(storage.load())
+    assets = asyncio.run(watchlist_service.list_assets())
     ConsolePresenter.print_asset_table(assets)
 
 
@@ -102,7 +101,7 @@ def gold(
 
 
 async def _gold(update: bool) -> None:
-    """执行黄金储备查询，    
+    """执行黄金储备查询，
     流程:
         1. 从数据库获取数据
         2. 如果不是上月最新数据，自动从 IMF 更新
@@ -111,7 +110,7 @@ async def _gold(update: bool) -> None:
     try:
         # 初始化数据库连接
         await gold_service.init_database()
-        
+
         # 获取最新数据（自动检测并更新过期数据）
         reserves = await gold_service.fetch_all_with_auto_update(force=update)
         if not reserves:
