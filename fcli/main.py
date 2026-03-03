@@ -27,18 +27,24 @@ app = typer.Typer(
 
 
 @app.callback(invoke_without_command=True)
-def quote(ctx: typer.Context):
+def quote(
+    ctx: typer.Context,
+    codes: Optional[List[str]] = typer.Argument(None, help="股票代码列表"),
+):
     """查询自选行情 (默认命令)"""
     if ctx.invoked_subcommand is not None:
         return
-    asyncio.run(_fetch_quotes())
+    asyncio.run(_fetch_quotes(codes))
 
 
-async def _fetch_quotes() -> None:
-    assets = await watchlist_service.list_assets()
-    if not assets:
-        ConsolePresenter.print_warning("暂无自选。使用 'fcli add <代码>' 添加。")
-        return
+async def _fetch_quotes(codes: Optional[List[str]] = None) -> None:
+    if codes:
+        assets = [Asset(code=c, market=Market.AUTO, type=AssetType.STOCK) for c in codes]
+    else:
+        assets = await watchlist_service.list_assets()
+        if not assets:
+            ConsolePresenter.print_warning("暂无自选。使用 'fcli add <代码>' 添加。")
+            return
 
     try:
         quotes = await quote_service.fetch_all(assets)
@@ -196,7 +202,8 @@ async def _fx(base: str, quote: Optional[str]) -> None:
             if rates:
                 print(f"\n{base} 汇率表:\n")
                 for code, r in sorted(rates.items(), key=lambda x: x[1].rate, reverse=True):
-                    print(f"  {code}: {r.rate:.4f}")
+                    display = forex_service.format_currency_display(code)
+                    print(f"  {display}: {r.rate:.4f}")
                 print()
             else:
                 ConsolePresenter.print_error(f"无法获取 {base} 汇率")

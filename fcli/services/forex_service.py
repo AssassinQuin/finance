@@ -181,5 +181,10 @@ class ForexService:
         """获取货币中文名称"""
         return self.COMMON_CURRENCIES.get(code.upper(), code)
 
+    def format_currency_display(self, code: str) -> str:
+        """格式化货币显示：代码（中文名）或仅代码"""
+        name = self.COMMON_CURRENCIES.get(code.upper())
+        return f"{code}（{name}）" if name else code
+
 
 forex_service = ForexService()
