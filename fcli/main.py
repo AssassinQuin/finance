@@ -139,17 +139,36 @@ async def _gold(update: bool) -> None:
 
 @app.command()
 def gpr(
+    update: bool = typer.Option(False, "-u", "--update", help="强制更新数据"),
     chart: bool = typer.Option(True, "--chart/--no-chart", help="显示图表"),
 ):
     """地缘政治风险指数"""
-    analysis = gpr_service.get_gpr_analysis()
-    if not analysis:
-        ConsolePresenter.print_warning("暂无 GPR 数据")
-        return
-    ConsolePresenter.print_gpr_report(analysis)
-    if chart:
-        history = gpr_service.get_gpr_history(months=120)
-        ConsolePresenter.print_gpr_chart(history)
+    asyncio.run(_gpr(update, chart))
+
+
+async def _gpr(update: bool, chart: bool) -> None:
+    try:
+        if update:
+            result = await gpr_service.update_data()
+            if result.get("success"):
+                ConsolePresenter.print_success(f"已更新GPR数据: {result.get('records', 0)} 条记录")
+            else:
+                ConsolePresenter.print_error(f"更新失败: {result.get('error', 'Unknown error')}")
+                return
+
+        analysis = gpr_service.get_gpr_analysis()
+        if not analysis:
+            ConsolePresenter.print_warning("暂无 GPR 数据")
+            return
+
+        ConsolePresenter.print_gpr_report(analysis)
+
+        if chart:
+            history = gpr_service.get_gpr_history(months=120)
+            ConsolePresenter.print_gpr_chart(history)
+    finally:
+        if Database.is_enabled():
+            await Database.close()
 
 
 # ============ Forex ============

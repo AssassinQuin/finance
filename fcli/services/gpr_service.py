@@ -3,57 +3,34 @@ GPR (地缘政治风险指数) 服务模块
 """
 
 import json
-from datetime import datetime
-from typing import Dict, List, Optional
+import logging
+from datetime import date
 
 from ..core.config import settings
+from ..core.models import GPRHistory
+from ..core.stores import GPRHistoryStore
+from .scrapers.gpr_scraper import GPRScraper
+
+logger = logging.getLogger(__name__)
 
 
 class GPRService:
-    """地缘政治风险指数服务"""
-
     def __init__(self):
         self.storage_file = settings.data_dir / "gpr_history.json"
-        # 基准数据 (Benchmark GPR Index)
-        self.baseline = {
-            "2026-01": 135.24,
-            "2025-12": 121.45,
-            "2025-11": 118.30,
-            "2025-10": 112.85,
-            "2025-09": 110.12,
-            "2025-08": 109.45,
-            "2025-07": 108.56,
-            "2025-06": 107.20,
-            "2025-01": 104.25,
-            "2024-10": 115.40,
-            "2024-01": 102.15,
-            "2023-10": 264.30,  # 加沙冲突峰值
-            "2022-02": 328.50,  # 乌克兰战争峰值
-            "2021-01": 98.65,
-            "2020-01": 145.20,
-            "2016-01": 92.45,
-            "2015-01": 88.30,
-            "2014-01": 85.12,
-        }
         self._ensure_storage()
 
     def _ensure_storage(self):
-        """确保存储文件存在"""
         if not settings.data_dir.exists():
             settings.data_dir.mkdir(parents=True)
-        if not self.storage_file.exists():
-            with open(self.storage_file, "w", encoding="utf-8") as f:
-                json.dump(self.baseline, f, ensure_ascii=False, indent=2)
 
-    def load_data(self) -> Dict[str, float]:
-        """加载 GPR 数据"""
+    def load_data(self) -> dict[str, float]:
         if not self.storage_file.exists():
-            return self.baseline
-        with open(self.storage_file, "r", encoding="utf-8") as f:
+            logger.warning("No GPR data file found. Run 'fcli gpr --update' to fetch data.")
+            return {}
+        with open(self.storage_file, encoding="utf-8") as f:
             return json.load(f)
 
-    def get_gpr_history(self, months: int = 12) -> List[Dict]:
-        """获取 GPR 历史数据"""
+    def get_gpr_history(self, months: int = 12) -> list[dict]:
         data = self.load_data()
         sorted_dates = sorted(data.keys())
 
@@ -63,8 +40,7 @@ class GPRService:
 
         return history[-months:]
 
-    def get_gpr_analysis(self) -> Dict:
-        """计算 GPR 指数多维度变化"""
+    def get_gpr_analysis(self) -> dict:
         data = self.load_data()
         dates = sorted(data.keys(), reverse=True)
         if not dates:
@@ -73,7 +49,7 @@ class GPRService:
         latest_date = dates[0]
         latest_val = data[latest_date]
 
-        def get_val_at_offset(months: int) -> Optional[float]:
+        def get_val_at_offset(months: int) -> float | None:
             try:
                 ly, lm = map(int, latest_date.split("-"))
                 target_m = lm - months
@@ -127,6 +103,65 @@ class GPRService:
         analysis["risk"] = {"level": risk_level, "color": risk_color}
 
         return analysis
+
+    async def update_data(self) -> dict:
+        """
+        Update GPR data from remote source and save to database.
+
+        Returns:
+            {"success": True, "records": N} or {"success": False, "error": "..."}
+        """
+        try:
+            logger.info("Starting GPR data update...")
+
+            scraper = GPRScraper()
+            try:
+                raw_data = await scraper.fetch_gpr_data()
+                logger.info(f"Fetched {len(raw_data)} GPR data points from remote")
+            finally:
+                await scraper.close()
+
+            if not raw_data:
+                return {"success": False, "error": "No data fetched from remote source"}
+
+            with open(self.storage_file, "w", encoding="utf-8") as f:
+                json.dump(raw_data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Updated local JSON file: {self.storage_file}")
+
+            records = []
+            for period, gpr_value in raw_data.items():
+                try:
+                    year, month = map(int, period.split("-"))
+                    report_date = date(year, month, 1)
+
+                    record = GPRHistory(
+                        country_code="WLD",
+                        report_date=report_date,
+                        gpr_index=gpr_value,
+                        gpr_threat=None,
+                        gpr_act=None,
+                        data_source="Caldara-Iacoviello",
+                    )
+                    records.append(record)
+                except Exception as e:
+                    logger.debug(f"Skipping period {period}: {e}")
+                    continue
+
+            if not records:
+                return {"success": False, "error": "No valid records to save"}
+
+            saved_count = await GPRHistoryStore.save_batch(records)
+            logger.info(f"Saved {saved_count} records to database")
+
+            return {
+                "success": True,
+                "records": saved_count,
+                "total_fetched": len(raw_data),
+            }
+
+        except Exception as e:
+            logger.error(f"GPR data update failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
 
 
 gpr_service = GPRService()

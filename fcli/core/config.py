@@ -360,7 +360,7 @@ class GPRDataSource(BaseSettings):
     # GPR Index 网站
     gpr_base_url: str = Field(default="https://www.matteoiacoviello.com", description="GPR Index 网站基础URL")
     gpr_data_url: str = Field(
-        default="https://www.matteoiacoviello.com/gpr_files/data_gpr_final.xls", description="GPR 数据文件URL"
+        default="https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls", description="GPR 数据文件URL"
     )
 
     model_config = SettingsConfigDict(

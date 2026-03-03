@@ -66,7 +66,7 @@ fred_base_url = "https://api.stlouisfed.org/fred"
 imf_base_url = "https://dataservices.imf.org/REST/SDMX_JSON.svc"
 
 # GPR数据源
-gpr_data_url = "https://www.matteoiacoviello.com/gpr_files/data_gpr_final.xls"
+gpr_data_url = "https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls"
 
 # ============================================================
 # 交易时段配置
