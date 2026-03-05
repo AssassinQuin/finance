@@ -1,8 +1,10 @@
-"""统一缓存模块
+"""统一缓存模块 - PostgreSQL UNLOGGED 表实现
 
-支持 Redis 缓存和文件缓存，自动降级。
+使用 PostgreSQL UNLOGGED 表替代 Redis，实现零额外依赖的缓存方案。
+UNLOGGED 表不记录 WAL，写入性能接近内存表，重启后数据清空。
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -11,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .config import config
+from .database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,7 @@ class BaseCache(ABC):
 
 
 class FileCache(BaseCache):
-    """文件缓存实现"""
+    """文件缓存实现 - 作为本地降级方案"""
 
     def __init__(self):
         self.file_path = config.data_dir / "cache.json"
@@ -106,179 +109,191 @@ class FileCache(BaseCache):
         self.set(key, data, ttl)
 
 
-class RedisCache(BaseCache):
-    """Redis 缓存实现"""
+class PostgresCache(BaseCache):
+    """PostgreSQL UNLOGGED 表缓存实现
+
+    使用 UNLOGGED 表作为高性能缓存，特点：
+    - 不记录 WAL，写入性能接近内存表
+    - 支持 TTL 自动过期清理
+    - 支持 key 前缀命名空间
+    - 数据库重启后数据清空（符合缓存语义）
+    """
 
     def __init__(self):
-        self._pool = None
-        self._redis = None
-        self._connected = False
-        self._prefix = config.redis.prefix
-
-    async def _connect(self) -> bool:
-        """连接 Redis"""
-        if self._connected:
-            return True
-
-        try:
-            import redis.asyncio as aioredis
-
-            self._pool = aioredis.ConnectionPool(
-                host=config.redis.host,
-                port=config.redis.port,
-                password=config.redis.password if config.redis.password else None,
-                db=config.redis.db,
-                max_connections=config.redis.pool_size,
-                decode_responses=True,
-            )
-            self._redis = aioredis.Redis(connection_pool=self._pool)
-            await self._redis.ping()
-            self._connected = True
-            logger.info(f"Redis connected: {config.redis.host}:{config.redis.port}")
-            return True
-        except Exception as e:
-            logger.warning(f"Redis connection failed: {e}")
-            self._connected = False
-            return False
-
-    async def _disconnect(self):
-        """断开 Redis 连接"""
-        if self._redis:
-            await self._redis.close()
-        if self._pool:
-            await self._pool.disconnect()
-        self._connected = False
+        self._prefix = "fcli:"
+        self._cleanup_interval = 300  # 5分钟清理一次过期数据
+        self._last_cleanup = 0
+        self._lock = asyncio.Lock()
 
     def _make_key(self, key: str) -> str:
         """生成带前缀的 key"""
         return f"{self._prefix}{key}"
 
+    async def _cleanup_expired(self):
+        """清理过期缓存数据"""
+        async with self._lock:
+            current_time = time.time()
+            # 限制清理频率
+            if current_time - self._last_cleanup < self._cleanup_interval:
+                return
+            self._last_cleanup = current_time
+
+            if not Database.is_enabled():
+                return
+
+            try:
+                await Database.execute("DELETE FROM cache_entries WHERE expire_at < $1", int(current_time))
+            except Exception as e:
+                logger.debug(f"Cache cleanup failed: {e}")
+
     def get(self, key: str) -> Optional[Any]:
-        """同步获取 - Redis 不支持同步操作，返回 None"""
-        logger.warning("Redis cache does not support sync get, use async_get instead")
+        """同步获取 - 尝试从数据库获取（仅限已初始化的连接）"""
+        # PostgreSQL 缓存主要面向异步操作
+        # 同步模式下回退到文件缓存
         return None
 
     def set(self, key: str, data: Any, ttl: int):
-        """同步设置 - Redis 不支持同步操作"""
-        logger.warning("Redis cache does not support sync set, use async_set instead")
+        """同步设置 - PostgreSQL 缓存主要面向异步操作"""
+        pass
 
     def delete(self, key: str):
-        """同步删除 - Redis 不支持同步操作"""
-        logger.warning("Redis cache does not support sync delete")
+        """同步删除 - PostgreSQL 缓存主要面向异步操作"""
+        pass
 
     def clear(self):
-        """同步清空 - Redis 不支持同步操作"""
-        logger.warning("Redis cache does not support sync clear")
+        """同步清空 - PostgreSQL 缓存主要面向异步操作"""
+        pass
 
     async def async_get(self, key: str) -> Optional[Any]:
-        """异步获取缓存"""
-        if not self._connected and not await self._connect():
+        """异步获取缓存 - 从 PostgreSQL UNLOGGED 表"""
+        if not Database.is_enabled():
             return None
+
+        # 定期清理过期数据
+        await self._cleanup_expired()
 
         try:
             full_key = self._make_key(key)
-            data = await self._redis.get(full_key)
-            if data:
-                return json.loads(data)
+            row = await Database.fetch_one(
+                """
+                SELECT data, expire_at 
+                FROM cache_entries 
+                WHERE key = $1 AND expire_at > $2
+                """,
+                full_key,
+                int(time.time()),
+            )
+
+            if row:
+                return json.loads(row["data"])
             return None
         except Exception as e:
-            logger.warning(f"Redis get failed for key {key}: {e}")
-            self._connected = False
+            logger.debug(f"Postgres cache get failed for key {key}: {e}")
             return None
 
     async def async_set(self, key: str, data: Any, ttl: int):
-        """异步设置缓存"""
-        if not self._connected and not await self._connect():
+        """异步设置缓存 - 写入 PostgreSQL UNLOGGED 表"""
+        if not Database.is_enabled():
             return
 
         try:
             full_key = self._make_key(key)
-            await self._redis.setex(full_key, ttl, json.dumps(data, ensure_ascii=False))
+            expire_at = int(time.time()) + ttl
+            json_data = json.dumps(data, ensure_ascii=False)
+
+            # 使用 UPSERT 语义
+            await Database.execute(
+                """
+                INSERT INTO cache_entries (key, data, expire_at, created_at)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (key) DO UPDATE SET
+                    data = EXCLUDED.data,
+                    expire_at = EXCLUDED.expire_at,
+                    created_at = EXCLUDED.created_at
+                """,
+                full_key,
+                json_data,
+                expire_at,
+                int(time.time()),
+            )
         except Exception as e:
-            logger.warning(f"Redis set failed for key {key}: {e}")
-            self._connected = False
+            logger.debug(f"Postgres cache set failed for key {key}: {e}")
 
     async def async_delete(self, key: str):
         """异步删除缓存"""
-        if not self._connected and not await self._connect():
+        if not Database.is_enabled():
             return
 
         try:
             full_key = self._make_key(key)
-            await self._redis.delete(full_key)
+            await Database.execute("DELETE FROM cache_entries WHERE key = $1", full_key)
         except Exception as e:
-            logger.warning(f"Redis delete failed for key {key}: {e}")
-            self._connected = False
+            logger.debug(f"Postgres cache delete failed for key {key}: {e}")
 
     async def async_clear(self):
-        """异步清空缓存"""
-        if not self._connected and not await self._connect():
+        """异步清空缓存（只清空带前缀的 key）"""
+        if not Database.is_enabled():
             return
 
         try:
-            # 只删除带前缀的 key
-            keys = await self._redis.keys(f"{self._prefix}*")
-            if keys:
-                await self._redis.delete(*keys)
+            await Database.execute("DELETE FROM cache_entries WHERE key LIKE $1", f"{self._prefix}%")
         except Exception as e:
-            logger.warning(f"Redis clear failed: {e}")
-            self._connected = False
+            logger.debug(f"Postgres cache clear failed: {e}")
 
 
 class HybridCache(BaseCache):
-    """混合缓存：Redis 优先，自动降级到文件缓存
-    
-    初始化时会 ping Redis 判断是否可用，若不可用则自动使用文件缓存。
+    """混合缓存：PostgreSQL UNLOGGED 表优先，自动降级到文件缓存
+
+    初始化时会检测 PostgreSQL 是否可用，若不可用则自动使用文件缓存。
+    即使 PostgreSQL 可用，也会同时写入文件缓存作为备份。
     """
 
     def __init__(self):
         self._file_cache = FileCache()
-        self._redis_cache: Optional[RedisCache] = None
-        self._use_redis = config.redis.enabled
-        self._redis_available = False
+        self._postgres_cache: Optional[PostgresCache] = None
+        self._use_postgres = True
+        self._postgres_available = False
         self._last_health_check = 0
         self._health_check_interval = 60  # 健康检查间隔（秒）
 
-    async def _check_redis_health(self) -> bool:
-        """检查 Redis 健康状态
-        
-        使用 ping 命令检测 Redis 是否可用。
+    async def _check_postgres_health(self) -> bool:
+        """检查 PostgreSQL 健康状态
+
+        使用简单查询检测 PostgreSQL 是否可用。
         不会频繁检查，有 60 秒的间隔限制。
-        
+
         Returns:
-            True 如果 Redis 可用
+            True 如果 PostgreSQL 可用
         """
         current_time = time.time()
-        
+
         # 限制检查频率
         if current_time - self._last_health_check < self._health_check_interval:
-            return self._redis_available
-        
+            return self._postgres_available
+
         self._last_health_check = current_time
-        
-        if not self._use_redis:
-            self._redis_available = False
+
+        if not self._use_postgres:
+            self._postgres_available = False
             return False
-        
-        # 延迟初始化 Redis 客户端
-        if self._redis_cache is None:
-            self._redis_cache = RedisCache()
-        
-        # 尝试连接并 ping
+
+        # 延迟初始化 PostgreSQL 缓存客户端
+        if self._postgres_cache is None:
+            self._postgres_cache = PostgresCache()
+
+        # 尝试连接并执行简单查询
         try:
-            connected = await self._redis_cache._connect()
-            if connected:
-                # 额外 ping 测试
-                await self._redis_cache._redis.ping()
-                self._redis_available = True
-                logger.debug("Redis health check passed")
+            if Database.is_enabled():
+                await Database.fetch_one("SELECT 1")
+                self._postgres_available = True
+                logger.debug("PostgreSQL health check passed")
             else:
-                self._redis_available = False
+                self._postgres_available = False
         except Exception as e:
-            logger.warning(f"Redis health check failed: {e}")
-            self._redis_available = False
-        
-        return self._redis_available
+            logger.debug(f"PostgreSQL health check failed: {e}")
+            self._postgres_available = False
+
+        return self._postgres_available
 
     def get(self, key: str) -> Optional[Any]:
         """同步获取 - 使用文件缓存"""
@@ -297,42 +312,42 @@ class HybridCache(BaseCache):
         self._file_cache.clear()
 
     async def async_get(self, key: str) -> Optional[Any]:
-        """异步获取 - 优先 Redis，降级到文件"""
-        # 检查 Redis 健康状态
-        if await self._check_redis_health():
-            data = await self._redis_cache.async_get(key)
+        """异步获取 - 优先 PostgreSQL，降级到文件"""
+        # 检查 PostgreSQL 健康状态
+        if await self._check_postgres_health():
+            data = await self._postgres_cache.async_get(key)
             if data is not None:
                 return data
-            # Redis 没有数据或获取失败，降级到文件缓存
-            logger.debug(f"Redis miss for key {key}, falling back to file cache")
+            # PostgreSQL 没有数据或获取失败，降级到文件缓存
+            logger.debug(f"Postgres miss for key {key}, falling back to file cache")
 
         return self._file_cache.get(key)
 
     async def async_set(self, key: str, data: Any, ttl: int):
-        """异步设置 - 同时写入 Redis 和文件"""
+        """异步设置 - 同时写入 PostgreSQL 和文件"""
         # 始终写入文件缓存（作为备份）
         self._file_cache.set(key, data, ttl)
 
-        # 尝试写入 Redis
-        if await self._check_redis_health():
-            await self._redis_cache.async_set(key, data, ttl)
+        # 尝试写入 PostgreSQL
+        if await self._check_postgres_health():
+            await self._postgres_cache.async_set(key, data, ttl)
 
     async def async_delete(self, key: str):
         """异步删除"""
         self._file_cache.delete(key)
-        if self._redis_cache:
-            await self._redis_cache.async_delete(key)
+        if self._postgres_cache:
+            await self._postgres_cache.async_delete(key)
 
     async def async_clear(self):
         """异步清空"""
         self._file_cache.clear()
-        if self._redis_cache:
-            await self._redis_cache.async_clear()
-    
+        if self._postgres_cache:
+            await self._postgres_cache.async_clear()
+
     @property
-    def is_redis_available(self) -> bool:
-        """返回 Redis 是否可用"""
-        return self._redis_available
+    def is_postgres_available(self) -> bool:
+        """返回 PostgreSQL 是否可用"""
+        return self._postgres_available
 
 
 # 全局缓存实例

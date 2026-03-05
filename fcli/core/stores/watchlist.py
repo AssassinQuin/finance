@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Optional
 from datetime import datetime
-import aiomysql
+import asyncpg
 
 from ..database import Database
 from ..models import WatchlistAssetDB, Asset, Market, AssetType
@@ -16,6 +16,12 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
 
     @classmethod
     def _row_to_model(cls, row: Dict) -> WatchlistAssetDB:
+        extra_data = row.get("extra")
+        if isinstance(extra_data, str):
+            extra_data = json.loads(extra_data)
+        elif extra_data is None:
+            extra_data = {}
+
         return WatchlistAssetDB(
             id=row.get("id"),
             code=row.get("code", ""),
@@ -23,7 +29,7 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
             name=row.get("name", ""),
             market=row.get("market", ""),
             type=row.get("type", ""),
-            extra=json.loads(row.get("extra")) if isinstance(row.get("extra"), str) else (row.get("extra") or {}),
+            extra=extra_data,
             is_active=bool(row.get("is_active", True)),
             added_at=row.get("added_at"),
             updated_at=row.get("updated_at"),
@@ -69,10 +75,8 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         """
 
         async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql)
-                rows = await cur.fetchall()
-                return [cls._row_to_model(row) for row in rows]
+            rows = await conn.fetch(sql)
+            return [cls._row_to_model(dict(row)) for row in rows]
 
     @classmethod
     async def get_by_code(cls, code: str) -> Optional[WatchlistAssetDB]:
@@ -80,13 +84,11 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         if not cls._is_enabled():
             return None
 
-        sql = "SELECT * FROM watchlist_assets WHERE code = %s"
+        sql = "SELECT * FROM watchlist_assets WHERE code = $1"
 
         async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (code,))
-                row = await cur.fetchone()
-                return cls._row_to_model(row) if row else None
+            row = await conn.fetchrow(sql, code)
+            return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
     async def add(cls, asset: Asset) -> bool:
@@ -95,37 +97,36 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
             return False
 
         db_asset = cls._asset_to_db(asset)
+        extra_json = json.dumps(db_asset.extra or {}) if isinstance(db_asset.extra, dict) else db_asset.extra or "{}"
 
+        # PostgreSQL UPSERT using ON CONFLICT
         sql = """
         INSERT INTO watchlist_assets
             (code, api_code, name, market, type, extra, is_active, added_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) AS new
-        ON DUPLICATE KEY UPDATE
-            api_code = new.api_code,
-            name = new.name,
-            market = new.market,
-            type = new.type,
-            extra = new.extra,
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+        ON CONFLICT (code) DO UPDATE SET
+            api_code = EXCLUDED.api_code,
+            name = EXCLUDED.name,
+            market = EXCLUDED.market,
+            type = EXCLUDED.type,
+            extra = EXCLUDED.extra,
             is_active = TRUE,
             updated_at = NOW()
         """
 
         async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    sql,
-                    (
-                        db_asset.code,
-                        db_asset.api_code,
-                        db_asset.name,
-                        db_asset.market,
-                        db_asset.type,
-                        db_asset.extra if isinstance(db_asset.extra, str) else json.dumps(db_asset.extra or {}),
-                        db_asset.is_active,
-                        db_asset.added_at or datetime.now(),
-                    ),
-                )
-                return True
+            await conn.execute(
+                sql,
+                db_asset.code,
+                db_asset.api_code,
+                db_asset.name,
+                db_asset.market,
+                db_asset.type,
+                extra_json,
+                db_asset.is_active,
+                db_asset.added_at or datetime.now(),
+            )
+            return True
 
     @classmethod
     async def remove(cls, code: str) -> bool:
@@ -136,13 +137,12 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         sql = """
         UPDATE watchlist_assets
         SET is_active = FALSE, updated_at = NOW()
-        WHERE code = %s
+        WHERE code = $1
         """
 
         async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (code,))
-                return cur.rowcount > 0
+            result = await conn.execute(sql, code)
+            return result != "UPDATE 0"
 
     @classmethod
     async def hard_delete(cls, code: str) -> bool:
@@ -150,12 +150,11 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         if not cls._is_enabled():
             return False
 
-        sql = "DELETE FROM watchlist_assets WHERE code = %s"
+        sql = "DELETE FROM watchlist_assets WHERE code = $1"
 
         async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (code,))
-                return cur.rowcount > 0
+            result = await conn.execute(sql, code)
+            return result != "DELETE 0"
 
     @classmethod
     async def get_assets(cls) -> List[Asset]:

@@ -9,6 +9,7 @@ Use Protocol for flexibility, ABC when you need to enforce inheritance.
 
 from .http import IHttpClient, HttpClientABC
 from .storage import IStorage, StorageABC
+from .database import IDatabase
 from .source import (
     # Base
     IDataSource,
@@ -34,6 +35,8 @@ __all__ = [
     # Storage
     "IStorage",
     "StorageABC",
+    # Database
+    "IDatabase",
     # Base Data Source
     "IDataSource",
     "DataSourceABC",

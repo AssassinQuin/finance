@@ -2,7 +2,6 @@
 
 from typing import List, Dict, Optional
 from datetime import datetime
-import aiomysql
 
 from ..database import Database
 from ..models import FetchLog
@@ -34,26 +33,25 @@ class FetchLogStore(BaseStore[FetchLog]):
         if not cls._is_enabled():
             return False
 
-        sql = """
-        INSERT INTO fetch_logs
-            (data_type, source, status, records_count, duration_ms, error_message)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
+        pool = cls._pool()
+        if not pool:
+            return False
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    sql,
-                    (
-                        log_entry.data_type,
-                        log_entry.source,
-                        log_entry.status,
-                        log_entry.records_count,
-                        log_entry.duration_ms,
-                        log_entry.error_message,
-                    ),
-                )
-                return True
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO fetch_logs
+                    (data_type, source, status, records_count, duration_ms, error_message)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                log_entry.data_type,
+                log_entry.source,
+                log_entry.status,
+                log_entry.records_count,
+                log_entry.duration_ms,
+                log_entry.error_message,
+            )
+            return True
 
     @classmethod
     async def get_recent(cls, data_type: str = "gold_reserves", limit: int = 10) -> List[FetchLog]:
@@ -61,18 +59,22 @@ class FetchLogStore(BaseStore[FetchLog]):
         if not cls._is_enabled():
             return []
 
-        sql = """
-        SELECT * FROM fetch_logs
-        WHERE data_type = %s
-        ORDER BY timestamp DESC
-        LIMIT %s
-        """
+        pool = cls._pool()
+        if not pool:
+            return []
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (data_type, limit))
-                rows = await cur.fetchall()
-                return [cls._row_to_model(row) for row in rows]
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM fetch_logs
+                WHERE data_type = $1
+                ORDER BY timestamp DESC
+                LIMIT $2
+                """,
+                data_type,
+                limit,
+            )
+            return [cls._row_to_model(dict(row)) for row in rows]
 
     @classmethod
     async def create_log(

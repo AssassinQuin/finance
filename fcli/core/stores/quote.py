@@ -1,125 +1,138 @@
-"""Quote store for database operations."""
+"""Quote store - PostgreSQL implementation."""
 
-from typing import List, Dict, Optional
-from datetime import date, datetime
-import aiomysql
+from datetime import datetime
+from typing import Any, Optional
 
 from ..database import Database
-from ..models import Quote
+from ..models.asset import Quote
+from ..models.base import Market, AssetType
 from .base import BaseStore
 
 
 class QuoteStore(BaseStore[Quote]):
-    """Store for quote data."""
+    """Store for quote data using PostgreSQL."""
 
     table_name = "quotes"
-    model_class = Quote
-    pk_field = "id"
 
     @classmethod
-    def _row_to_model(cls, row: Dict) -> Quote:
-        return Quote(
-            code=row.get("symbol", ""),
-            name=row.get("name", ""),
-            price=float(row.get("price", 0)),
-            change_percent=float(row.get("change_pct", 0)),
-            update_time=row.get("quote_time") if row.get("quote_time") else datetime.now(),
-            market=row.get("exchange", ""),
-            type=row.get("type", "stock"),
-            volume=str(row.get("volume", "")),
-            extra=row.get("extra_data") or {},
-        )
-
-    @classmethod
-    async def save(cls, quote: Quote, quote_date: date = None) -> bool:
-        """Save a quote (upsert)."""
-        if not cls._is_enabled():
+    async def save(cls, quote: Quote) -> bool:
+        """Save quote data using PostgreSQL UPSERT."""
+        if not Database.is_enabled():
             return False
 
-        q_date = quote_date or date.today()
-
-        sql = """
-        INSERT INTO quotes
-            (symbol, name, type, exchange, price, change_pct, volume,
-             quote_date, quote_time, data_source, extra_data)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) AS new
-        ON DUPLICATE KEY UPDATE
-            name = new.name,
-            price = new.price,
-            change_pct = new.change_pct,
-            volume = new.volume,
-            quote_time = new.quote_time,
-            extra_data = new.extra_data,
-            updated_at = NOW()
-        """
-
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    sql,
-                    (
-                        quote.code,
-                        quote.name,
-                        quote.type.value if hasattr(quote.type, "value") else quote.type,
-                        quote.market.value if hasattr(quote.market, "value") else quote.market,
-                        quote.price,
-                        quote.change_percent,
-                        int(quote.volume) if quote.volume and quote.volume.isdigit() else None,
-                        q_date,
-                        datetime.now(),
-                        "fcli",
-                        quote.extra,
-                    ),
-                )
-                return True
+        try:
+            await Database.execute(
+                f"""
+                INSERT INTO {cls.table_name} (
+                    code, name, price, change_percent, high, low, volume,
+                    market, quote_time
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (code, DATE(quote_time)) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    price = EXCLUDED.price,
+                    change_percent = EXCLUDED.change_percent,
+                    high = EXCLUDED.high,
+                    low = EXCLUDED.low,
+                    volume = EXCLUDED.volume,
+                    market = EXCLUDED.market,
+                    quote_time = EXCLUDED.quote_time,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                quote.code,
+                quote.name,
+                quote.price,
+                quote.change_percent,
+                quote.high,
+                quote.low,
+                quote.volume,
+                quote.market.value if isinstance(quote.market, Market) else quote.market,
+                quote.update_time,
+            )
+            return True
+        except Exception:
+            return False
 
     @classmethod
-    async def save_batch(cls, quotes: List[Quote], quote_date: date = None) -> int:
-        """Batch save quotes."""
-        if not cls._is_enabled() or not quotes:
+    async def save_many(cls, quotes: list[Quote]) -> int:
+        """Save multiple quotes."""
+        if not Database.is_enabled():
             return 0
 
-        q_date = quote_date or date.today()
         count = 0
         for quote in quotes:
-            if await cls.save(quote, q_date):
+            if await cls.save(quote):
                 count += 1
         return count
 
     @classmethod
-    async def get_latest_by_symbol(cls, symbol: str) -> Optional[Quote]:
-        """Get latest quote for a symbol."""
-        if not cls._is_enabled():
-            return None
-
-        sql = """
-        SELECT * FROM quotes
-        WHERE symbol = %s
-        ORDER BY quote_date DESC, quote_time DESC
-        LIMIT 1
-        """
-
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (symbol,))
-                row = await cur.fetchone()
-                return cls._row_to_model(row) if row else None
-
-    @classmethod
-    async def get_history(cls, symbol: str, days: int = 30) -> List[Quote]:
-        """Get historical quotes for a symbol."""
-        if not cls._is_enabled():
+    async def get_by_code(cls, code: str, limit: int = 10) -> list[Quote]:
+        """Get historical quotes for a code."""
+        if not Database.is_enabled():
             return []
 
-        sql = """
-        SELECT * FROM quotes
-        WHERE symbol = %s
-        ORDER BY quote_date DESC
-        LIMIT %s
-        """
+        rows = await Database.fetch_all(
+            f"""
+            SELECT code, name, price, change_percent, high, low, volume,
+                   market, quote_time
+            FROM {cls.table_name}
+            WHERE code = $1
+            ORDER BY quote_time DESC
+            LIMIT $2
+            """,
+            code,
+            limit,
+        )
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (symbol, days))
-                rows = await cur.fetchall()
-                return [cls._row_to_model(row) for row in rows]
+        return [cls._row_to_model(row) for row in rows]
+
+    @classmethod
+    async def get_latest(cls, code: str) -> Optional[Quote]:
+        """Get latest quote for a code."""
+        if not Database.is_enabled():
+            return None
+
+        row = await Database.fetch_one(
+            f"""
+            SELECT code, name, price, change_percent, high, low, volume,
+                   market, quote_time
+            FROM {cls.table_name}
+            WHERE code = $1
+            ORDER BY quote_time DESC
+            LIMIT 1
+            """,
+            code,
+        )
+
+        if not row:
+            return None
+
+        return cls._row_to_model(row)
+
+    @classmethod
+    async def delete_old(cls, days: int = 30) -> int:
+        """Delete quotes older than specified days."""
+        if not Database.is_enabled():
+            return 0
+
+        result = await Database.execute(
+            f"""
+            DELETE FROM {cls.table_name}
+            WHERE quote_time < CURRENT_DATE - INTERVAL '{days} days'
+            """
+        )
+        return result or 0
+
+    @classmethod
+    def _row_to_model(cls, row: Any) -> Quote:
+        return Quote(
+            code=row["code"],
+            name=row["name"] or "",
+            price=float(row["price"]) if row["price"] else 0.0,
+            change_percent=float(row["change_percent"]) if row["change_percent"] else 0.0,
+            update_time=row["quote_time"] or datetime.now(),
+            market=Market(row["market"]) if row["market"] else Market.CN,
+            type=AssetType.STOCK,
+            high=float(row["high"]) if row["high"] else None,
+            low=float(row["low"]) if row["low"] else None,
+            volume=str(row["volume"]) if row["volume"] else None,
+        )

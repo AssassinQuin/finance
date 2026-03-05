@@ -333,7 +333,7 @@ class GoldService:
                             "country": r.get("country"),
                             "code": r.get("code"),
                             "amount": r.get("amount"),
-                            "date": r.get("date"),
+                            "date": str(r.get("date")) if r.get("date") else None,
                             "source": r.get("source", "IMF"),
                             "change_1m": r.get("change_1m", 0.0) or 0.0,
                             "change_3m": r.get("change_3m", 0.0) or 0.0,
@@ -370,15 +370,15 @@ class GoldService:
     async def fetch_global_supply_demand(self, force_update: bool = False) -> Optional[Dict]:
         """
         Fetch global gold supply/demand balance data from WGC.
-        
+
         Data source: World Gold Council (gold.org)
         - Quarterly supply/demand statistics
         - Mine production, recycling, hedging (supply)
         - Jewelry, technology, investment, central banks (demand)
-        
+
         Args:
             force_update: Force refresh from WGC and save to database
-        
+
         Returns:
             Dict with supply and demand breakdown, or None if unavailable
         """
@@ -390,13 +390,13 @@ class GoldService:
                     return self._supply_demand_to_dict(db_data)
             except Exception as e:
                 logger.error(f"Failed to get supply/demand from database: {e}")
-        
+
         # Fetch from WGC
         try:
             data = await self._wgc_scraper.fetch_supply_demand()
             if not data:
                 return None
-            
+
             # Save to database if enabled
             if Database.is_enabled():
                 try:
@@ -425,7 +425,7 @@ class GoldService:
                     logger.info(f"Saved supply/demand data for {data.period} to database")
                 except Exception as e:
                     logger.error(f"Failed to save supply/demand to database: {e}")
-            
+
             return {
                 "period": data.period,
                 "year": data.year,
@@ -454,7 +454,7 @@ class GoldService:
         except Exception as e:
             logger.error(f"Failed to fetch supply/demand data: {e}")
             return None
-    
+
     def _supply_demand_to_dict(self, db_data: GoldSupplyDemand) -> Dict:
         """Convert database model to API dict format."""
         return {
@@ -482,41 +482,41 @@ class GoldService:
             "price_avg": db_data.price_avg_usd,
             "source": db_data.data_source or "WGC",
         }
-    
+
     async def get_supply_demand_history(self, limit: int = 8) -> List[Dict]:
         """
         Get historical supply/demand data from database.
-        
+
         Args:
             limit: Number of quarters to return (default 8 = 2 years)
-        
+
         Returns:
             List of supply/demand data by quarter (newest first)
         """
         if not Database.is_enabled():
             return []
-        
+
         try:
             history = await GoldSupplyDemandStore.get_history(limit)
             return [self._supply_demand_to_dict(item) for item in history]
         except Exception as e:
             logger.error(f"Failed to get supply/demand history: {e}")
             return []
-    
+
     async def get_supply_demand_by_quarter(self, year: int, quarter: int) -> Optional[Dict]:
         """
         Get supply/demand data for a specific quarter.
-        
+
         Args:
             year: Year (e.g. 2024)
             quarter: Quarter (1-4)
-        
+
         Returns:
             Supply/demand data or None if not found
         """
         if not Database.is_enabled():
             return None
-        
+
         try:
             data = await GoldSupplyDemandStore.get_by_quarter(year, quarter)
             if data:

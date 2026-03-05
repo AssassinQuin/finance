@@ -21,7 +21,7 @@ SET @@SESSION.SQL_LOG_BIN= 0;
 -- GTID state at the beginning of the backup 
 --
 
-SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ '58dc6924-12e8-11f1-b834-da5586f8c46e:1-217';
+SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ '58dc6924-12e8-11f1-b834-da5586f8c46e:1-5798';
 
 --
 -- Current Database: `fcli`
@@ -51,7 +51,7 @@ CREATE TABLE `central_bank_schedules` (
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `country_code` (`country_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=81 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=141 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -123,7 +123,43 @@ CREATE TABLE `gold_reserves` (
   UNIQUE KEY `uk_country_date` (`country_code`,`report_date`),
   KEY `idx_report_date` (`report_date`),
   KEY `idx_country_code` (`country_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=12626 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='é»„é‡‘å‚¨å¤‡åŽ†å²æ•°æ®';
+) ENGINE=InnoDB AUTO_INCREMENT=20117 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='é»„é‡‘å‚¨å¤‡åŽ†å²æ•°æ®';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `gold_supply_demand`
+--
+
+DROP TABLE IF EXISTS `gold_supply_demand`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `gold_supply_demand` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `year` int NOT NULL,
+  `quarter` tinyint NOT NULL,
+  `period` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `mine_production` decimal(12,2) DEFAULT '0.00',
+  `recycling` decimal(12,2) DEFAULT '0.00',
+  `net_hedging` decimal(12,2) DEFAULT '0.00',
+  `total_supply` decimal(12,2) DEFAULT '0.00',
+  `jewelry` decimal(12,2) DEFAULT '0.00',
+  `technology` decimal(12,2) DEFAULT '0.00',
+  `total_investment` decimal(12,2) DEFAULT '0.00',
+  `bars_coins` decimal(12,2) DEFAULT '0.00',
+  `etfs` decimal(12,2) DEFAULT '0.00',
+  `otc_investment` decimal(12,2) DEFAULT '0.00',
+  `central_banks` decimal(12,2) DEFAULT '0.00',
+  `total_demand` decimal(12,2) DEFAULT '0.00',
+  `supply_demand_balance` decimal(12,2) DEFAULT '0.00',
+  `price_avg_usd` decimal(12,2) DEFAULT NULL,
+  `data_source` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `fetch_time` datetime DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_year_quarter` (`year`,`quarter`),
+  KEY `idx_year` (`year`)
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -219,7 +255,7 @@ CREATE TABLE `watchlist_assets` (
   KEY `idx_market` (`market`),
   KEY `idx_type` (`type`),
   KEY `idx_is_active` (`is_active`)
-) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='自选资产';
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='自选资产';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -240,4 +276,4 @@ SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-02-27  8:49:10
+-- Dump completed on 2026-03-05  5:02:57

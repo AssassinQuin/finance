@@ -98,6 +98,10 @@ class HttpClient:
 
         return None
 
+    async def get_binary(self, url: str, use_proxy: bool = True) -> Optional[bytes]:
+        result = await self.fetch(url, binary_mode=True, use_proxy=use_proxy)
+        return result if isinstance(result, bytes) else None
+
     async def close(self):
         if self.session and not self.session.closed:
             await self.session.close()

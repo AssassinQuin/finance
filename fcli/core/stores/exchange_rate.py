@@ -2,7 +2,6 @@
 
 from typing import List, Dict, Optional
 from datetime import date
-import aiomysql
 
 from ..database import Database
 from ..models import ExchangeRate
@@ -33,29 +32,28 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
 
         r_date = rate_date or date.today()
 
-        sql = """
-        INSERT INTO exchange_rates
-            (from_currency, to_currency, rate, rate_date, data_source)
-        VALUES (%s, %s, %s, %s, %s) AS new
-        ON DUPLICATE KEY UPDATE
-            rate = new.rate,
-            data_source = new.data_source,
-            updated_at = NOW()
-        """
+        pool = cls._pool()
+        if not pool:
+            return False
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    sql,
-                    (
-                        rate.base_currency,
-                        rate.quote_currency,
-                        rate.rate,
-                        r_date,
-                        rate.source,
-                    ),
-                )
-                return True
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO exchange_rates
+                    (from_currency, to_currency, rate, rate_date, data_source)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (from_currency, to_currency, rate_date) DO UPDATE SET
+                    rate = EXCLUDED.rate,
+                    data_source = EXCLUDED.data_source,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                rate.base_currency,
+                rate.quote_currency,
+                rate.rate,
+                r_date,
+                rate.source,
+            )
+            return True
 
     @classmethod
     async def get_latest(cls, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
@@ -63,18 +61,22 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
         if not cls._is_enabled():
             return None
 
-        sql = """
-        SELECT * FROM exchange_rates
-        WHERE from_currency = %s AND to_currency = %s
-        ORDER BY rate_date DESC
-        LIMIT 1
-        """
+        pool = cls._pool()
+        if not pool:
+            return None
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (base_currency, quote_currency))
-                row = await cur.fetchone()
-                return cls._row_to_model(row) if row else None
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM exchange_rates
+                WHERE from_currency = $1 AND to_currency = $2
+                ORDER BY rate_date DESC
+                LIMIT 1
+                """,
+                base_currency,
+                quote_currency,
+            )
+            return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
     async def get_all_for_base(cls, base_currency: str) -> List[ExchangeRate]:
@@ -82,23 +84,26 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
         if not cls._is_enabled():
             return []
 
-        sql = """
-        SELECT er.* FROM exchange_rates er
-        INNER JOIN (
-            SELECT to_currency, MAX(rate_date) as max_date
-            FROM exchange_rates
-            WHERE from_currency = %s
-            GROUP BY to_currency
-        ) latest ON er.to_currency = latest.to_currency
-                 AND er.rate_date = latest.max_date
-        WHERE er.from_currency = %s
-        """
+        pool = cls._pool()
+        if not pool:
+            return []
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (base_currency, base_currency))
-                rows = await cur.fetchall()
-                return [cls._row_to_model(row) for row in rows]
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT er.* FROM exchange_rates er
+                INNER JOIN (
+                    SELECT to_currency, MAX(rate_date) as max_date
+                    FROM exchange_rates
+                    WHERE from_currency = $1
+                    GROUP BY to_currency
+                ) latest ON er.to_currency = latest.to_currency
+                         AND er.rate_date = latest.max_date
+                WHERE er.from_currency = $1
+                """,
+                base_currency,
+            )
+            return [cls._row_to_model(dict(row)) for row in rows]
 
     @classmethod
     async def get_history(cls, base_currency: str, quote_currency: str, days: int = 30) -> List[ExchangeRate]:
@@ -106,15 +111,20 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
         if not cls._is_enabled():
             return []
 
-        sql = """
-        SELECT * FROM exchange_rates
-        WHERE from_currency = %s AND to_currency = %s
-        ORDER BY rate_date DESC
-        LIMIT %s
-        """
+        pool = cls._pool()
+        if not pool:
+            return []
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (base_currency, quote_currency, days))
-                rows = await cur.fetchall()
-                return [cls._row_to_model(row) for row in rows]
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM exchange_rates
+                WHERE from_currency = $1 AND to_currency = $2
+                ORDER BY rate_date DESC
+                LIMIT $3
+                """,
+                base_currency,
+                quote_currency,
+                days,
+            )
+            return [cls._row_to_model(dict(row)) for row in rows]

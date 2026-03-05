@@ -91,7 +91,7 @@ class WGCScraper:
 
     def __init__(self):
         pass
-    
+
     async def close(self):
         """Close resources (no-op for WGCScraper, uses global http_client)"""
         pass
@@ -271,6 +271,10 @@ class WGCScraper:
                     return self.parse_excel(excel_bytes)
 
         return []
+
+    async def fetch_supply_demand(self) -> List[QuarterlySupplyDemand]:
+        """Alias for fetch_latest for backward compatibility."""
+        return await self.fetch_latest()
 
     def fetch_from_local(self, file_path: str | Path) -> List[QuarterlySupplyDemand]:
         """

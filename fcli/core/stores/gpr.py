@@ -2,7 +2,6 @@
 
 from datetime import date
 from typing import List, Dict, Optional
-import aiomysql
 
 from ..database import Database
 from ..models import GPRHistory
@@ -34,32 +33,31 @@ class GPRHistoryStore(BaseStore[GPRHistory]):
         if not cls._is_enabled() or not records:
             return 0
 
-        sql = """
-        INSERT INTO gpr_history
-            (country_code, report_date, gpr_index, gpr_threat, gpr_act, data_source)
-        VALUES (%s, %s, %s, %s, %s, %s) AS new
-        ON DUPLICATE KEY UPDATE
-            gpr_index = new.gpr_index,
-            gpr_threat = new.gpr_threat,
-            gpr_act = new.gpr_act,
-            data_source = new.data_source
-        """
+        pool = cls._pool()
+        if not pool:
+            return 0
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor() as cur:
-                values = [
-                    (
-                        r.country_code,
-                        r.report_date,
-                        r.gpr_index,
-                        r.gpr_threat,
-                        r.gpr_act,
-                        r.data_source,
-                    )
-                    for r in records
-                ]
-                await cur.executemany(sql, values)
-                return len(values)
+        async with pool.acquire() as conn:
+            for r in records:
+                await conn.execute(
+                    """
+                    INSERT INTO gpr_history
+                        (country_code, report_date, gpr_index, gpr_threat, gpr_act, data_source)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT (country_code, report_date) DO UPDATE SET
+                        gpr_index = EXCLUDED.gpr_index,
+                        gpr_threat = EXCLUDED.gpr_threat,
+                        gpr_act = EXCLUDED.gpr_act,
+                        data_source = EXCLUDED.data_source
+                    """,
+                    r.country_code,
+                    r.report_date,
+                    r.gpr_index,
+                    r.gpr_threat,
+                    r.gpr_act,
+                    r.data_source,
+                )
+            return len(records)
 
     @classmethod
     async def get_latest(cls, country_code: str = "WLD") -> Optional[GPRHistory]:
@@ -67,18 +65,21 @@ class GPRHistoryStore(BaseStore[GPRHistory]):
         if not cls._is_enabled():
             return None
 
-        sql = """
-        SELECT * FROM gpr_history
-        WHERE country_code = %s
-        ORDER BY report_date DESC
-        LIMIT 1
-        """
+        pool = cls._pool()
+        if not pool:
+            return None
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (country_code.upper(),))
-                row = await cur.fetchone()
-                return cls._row_to_model(row) if row else None
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM gpr_history
+                WHERE country_code = $1
+                ORDER BY report_date DESC
+                LIMIT 1
+                """,
+                country_code.upper(),
+            )
+            return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
     async def get_history(cls, country_code: str = "WLD", months: int = 12) -> List[GPRHistory]:
@@ -86,15 +87,19 @@ class GPRHistoryStore(BaseStore[GPRHistory]):
         if not cls._is_enabled():
             return []
 
-        sql = """
-        SELECT * FROM gpr_history
-        WHERE country_code = %s
-        ORDER BY report_date DESC
-        LIMIT %s
-        """
+        pool = cls._pool()
+        if not pool:
+            return []
 
-        async with cls._pool().acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute(sql, (country_code.upper(), months))
-                rows = await cur.fetchall()
-                return [cls._row_to_model(row) for row in rows]
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM gpr_history
+                WHERE country_code = $1
+                ORDER BY report_date DESC
+                LIMIT $2
+                """,
+                country_code.upper(),
+                months,
+            )
+            return [cls._row_to_model(dict(row)) for row in rows]

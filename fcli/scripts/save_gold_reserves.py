@@ -224,38 +224,42 @@ async def verify_data():
     logger.info("Verifying saved data...")
 
     pool = Database.get_pool()
+    if not pool:
+        logger.warning("Database pool not available")
+        return
+
     async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            # 按国家统计
-            await cur.execute("""
-                SELECT country_code, country_name, data_source, 
-                       COUNT(*) as records, 
-                       MIN(report_date) as min_date, 
-                       MAX(report_date) as max_date,
-                       (SELECT amount_tonnes FROM gold_reserves gr2 
-                       WHERE gr2.country_code = gr1.country_code 
-                       AND gr2.data_source = 'IMF'
-                       ORDER BY report_date DESC LIMIT 1) as latest_amount
-                       FROM gold_reserves gr1
-                       WHERE data_source = 'IMF'
-                       GROUP BY country_code, country_name, data_source
-                       ORDER BY latest_amount DESC
-                       LIMIT 30
-            """)
-            rows = await cur.fetchall()
+        rows = await conn.fetch("""
+            SELECT country_code, country_name,
+                   COUNT(*) as records,
+                   MIN(data_date) as min_date,
+                   MAX(data_date) as max_date,
+                   (SELECT gold_tonnes FROM gold_reserves gr2
+                   WHERE gr2.country_code = gr1.country_code
+                   ORDER BY data_date DESC LIMIT 1) as latest_amount
+                   FROM gold_reserves gr1
+                   GROUP BY country_code, country_name
+                   ORDER BY latest_amount DESC
+                   LIMIT 30
+        """)
 
-            if rows:
-                print(f"\n{'国家':<20} {'记录数':<8} {'最早':<12} {'最新':<12} {'最新储量(吨)':<15}")
-                print("-" * 70)
-                for row in rows:
-                    code, name, source, count, min_date, max_date, amount = row
-                    name_display = name[:18] if name else code
-                    amount_str = f"{amount:.2f}" if amount else "N/A"
-                    print(f"{name_display:<20} {count:<8} {min_date} {max_date} {amount_str:<15}")
+        if rows:
+            print(f"\n{'国家':<20} {'记录数':<8} {'最早':<12} {'最新':<12} {'最新储量(吨)':<15}")
+            print("-" * 70)
+            for row in rows:
+                code = row["country_code"]
+                name = row["country_name"]
+                count = row["records"]
+                min_date = row["min_date"]
+                max_date = row["max_date"]
+                amount = row["latest_amount"]
+                name_display = name[:18] if name else code
+                amount_str = f"{amount:.2f}" if amount else "N/A"
+                print(f"{name_display:<20} {count:<8} {min_date} {max_date} {amount_str:<15}")
 
-                print(f"\n共 {len(rows)} 个国家/地区")
-            else:
-                print("No IMF data found")
+            print(f"\n共 {len(rows)} 个国家/地区")
+        else:
+            print("No data found")
 
 
 async def main():

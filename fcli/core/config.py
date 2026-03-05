@@ -41,9 +41,11 @@ except ImportError:
 
 
 class DatabaseSettings(BaseSettings):
+    """PostgreSQL database configuration."""
+
     host: str = "127.0.0.1"
-    port: int = 3306
-    user: str = "root"
+    port: int = 5432  # PostgreSQL default port
+    user: str = "postgres"
     password: str = ""
     database: str = "fcli"
     pool_min: int = 2
@@ -96,25 +98,6 @@ class CacheSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_CACHE_",
-        env_file=PROJECT_ENV_PATH,
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-
-class RedisSettings(BaseSettings):
-    """Redis 配置 - 所有默认值来自 config.toml"""
-
-    enabled: Optional[bool] = Field(default=None)
-    host: Optional[str] = Field(default=None)
-    port: Optional[int] = Field(default=None)
-    password: Optional[str] = Field(default=None)
-    db: Optional[int] = Field(default=None)
-    prefix: Optional[str] = Field(default=None)
-    pool_size: Optional[int] = Field(default=None)
-
-    model_config = SettingsConfigDict(
-        env_prefix="FCLI_REDIS_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -450,7 +433,6 @@ def _merge_toml_to_settings(toml_config: Dict[str, Any], settings: "Settings") -
         "datasource": "datasource",
         "source": "source",
         "http": "http",
-        "redis": "redis",
         "trading_hours": "trading_hours",
         "gold": "gold",
         "display": "display",
@@ -488,7 +470,6 @@ class Settings(BaseSettings):
     datasource: DataSourceConfig = Field(default_factory=DataSourceConfig)
     http: HttpSettings = Field(default_factory=HttpSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)
-    redis: RedisSettings = Field(default_factory=RedisSettings)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_",
