@@ -3,47 +3,60 @@
 
 import typer
 import asyncio
-from datetime import datetime
 from typing import Optional, List
 
-from .core.config import config
-from .core.database import Database
-from .core.models import Asset, Market, AssetType
-from .services.gold_service import gold_service
-from .services.gpr_service import gpr_service
-from .services.forex_service import forex_service
+from .core.models.base import Market, AssetType
+from .core.models.asset import Asset
 from .services.quote_service import quote_service
 from .services.watchlist_service import watchlist_service
 from .infra.http_client import http_client
 from .utils.presenter import ConsolePresenter
+from .commands.watchlist import app as watchlist_app
+from .commands.gold import app as gold_app
+from .commands.gpr import app as gpr_app
+from .commands.fx import app as fx_app
 
 app = typer.Typer(
+    name="fcli",
     help="FCLI - 命令行金融工具",
     add_completion=False,
     rich_markup_mode="rich",
 )
 
-# ============ Quote (Default) ============
+
+@app.command(name="quote", deprecated=False)
+def quote_cmd(
+    codes: Optional[List[str]] = typer.Argument(None, help="股票代码列表"),
+):
+    """查询自选行情
+
+    不带参数时显示所有自选，带参数时查询指定代码行情。
+
+    示例:
+        fcli quote              # 查询所有自选
+        fcli quote 600519       # 查询贵州茅台
+        fcli quote 600519 AAPL  # 查询多个代码
+    """
+    asyncio.run(_fetch_quotes(codes))
 
 
 @app.callback(invoke_without_command=True)
-def quote(
-    ctx: typer.Context,
-    codes: Optional[List[str]] = typer.Argument(None, help="股票代码列表"),
-):
-    """查询自选行情 (默认命令)"""
-    if ctx.invoked_subcommand is not None:
-        return
-    asyncio.run(_fetch_quotes(codes))
+def main(ctx: typer.Context):
+    """FCLI - 命令行金融工具
+
+    默认行为: 查询所有自选行情 (等同于 'fcli quote')
+    """
+    if ctx.invoked_subcommand is None:
+        asyncio.run(_fetch_quotes(None))
 
 
 async def _fetch_quotes(codes: Optional[List[str]] = None) -> None:
     if codes:
-        assets = [Asset(code=c, market=Market.AUTO, type=AssetType.STOCK) for c in codes]
+        assets = [Asset(code=c, market=Market.CN, type=AssetType.STOCK, api_code=c, name=c) for c in codes]
     else:
         assets = await watchlist_service.list_assets()
         if not assets:
-            ConsolePresenter.print_warning("暂无自选。使用 'fcli add <代码>' 添加。")
+            ConsolePresenter.print_warning("暂无自选。使用 'fcli watchlist add <代码>' 添加。")
             return
 
     try:
@@ -61,164 +74,10 @@ async def _fetch_quotes(codes: Optional[List[str]] = None) -> None:
         await http_client.close()
 
 
-# ============ Watchlist ============
-
-
-@app.command()
-def add(codes: List[str]):
-    """添加自选"""
-
-    async def _add() -> int:
-        return await watchlist_service.add_assets(codes)
-
-    count = asyncio.run(_add())
-    ConsolePresenter.print_success(f"已添加 {count} 个自选")
-
-
-@app.command()
-def rm(code: str):
-    """删除自选"""
-
-    async def _rm() -> bool:
-        return await watchlist_service.remove_asset(code)
-
-    if asyncio.run(_rm()):
-        ConsolePresenter.print_success(f"已删除 {code}")
-    else:
-        ConsolePresenter.print_error(f"未找到 {code}")
-
-
-@app.command()
-def ls():
-    """列出所有自选"""
-    assets = asyncio.run(watchlist_service.list_assets())
-    ConsolePresenter.print_asset_table(assets)
-
-
-# ============ Gold ============
-
-
-@app.command()
-def gold(
-    update: bool = typer.Option(False, "-u", "--update", help="强制更新"),
-):
-    """全球黄金储备 - 显示 1月、3月、6月、12月变化"""
-    asyncio.run(_gold(update))
-
-
-async def _gold(update: bool) -> None:
-    """执行黄金储备查询，
-    流程:
-        1. 从数据库获取数据
-        2. 如果不是上月最新数据，自动从 IMF 更新
-        3. 展示多时间段变化 (1m, 3m, 6m, 12m)
-    """
-    try:
-        # 初始化数据库连接
-        await gold_service.init_database()
-
-        # 获取最新数据（自动检测并更新过期数据）
-        reserves = await gold_service.fetch_all_with_auto_update(force=update)
-        if not reserves:
-            ConsolePresenter.print_warning("无法获取黄金储备数据")
-            return
-
-        # 获取供需数据 (WGC)
-        balance = await gold_service.fetch_global_supply_demand()
-
-        # 展示数据
-        ConsolePresenter.print_gold_report(
-            {
-                "reserves": reserves,
-                "balance": balance,
-                "last_update": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            }
-        )
-    finally:
-        await gold_service.close()
-        if Database.is_enabled():
-            await Database.close()
-
-
-# ============ GPR ============
-
-
-@app.command()
-def gpr(
-    update: bool = typer.Option(False, "-u", "--update", help="强制更新数据"),
-    chart: bool = typer.Option(True, "--chart/--no-chart", help="显示图表"),
-):
-    """地缘政治风险指数"""
-    asyncio.run(_gpr(update, chart))
-
-
-async def _gpr(update: bool, chart: bool) -> None:
-    try:
-        if update:
-            result = await gpr_service.update_data()
-            if result.get("success"):
-                ConsolePresenter.print_success(f"已更新GPR数据: {result.get('records', 0)} 条记录")
-            else:
-                ConsolePresenter.print_error(f"更新失败: {result.get('error', 'Unknown error')}")
-                return
-
-        analysis = gpr_service.get_gpr_analysis()
-        if not analysis:
-            ConsolePresenter.print_warning("暂无 GPR 数据")
-            return
-
-        ConsolePresenter.print_gpr_report(analysis)
-
-        if chart:
-            history = gpr_service.get_gpr_history(months=120)
-            ConsolePresenter.print_gpr_chart(history)
-    finally:
-        if Database.is_enabled():
-            await Database.close()
-
-
-# ============ Forex ============
-
-
-@app.command()
-def fx(
-    base: str = typer.Argument("USD", help="基准货币"),
-    quote: Optional[str] = typer.Argument(None, help="目标货币"),
-):
-    """汇率查询"""
-    asyncio.run(_fx(base, quote))
-
-
-async def _fx(base: str, quote: Optional[str]) -> None:
-    try:
-        if quote:
-            rate = await forex_service.get_rate(base, quote)
-            if rate:
-                print(f"\n{base}/{quote}: {rate.rate:.4f}\n")
-            else:
-                ConsolePresenter.print_error(f"无法获取 {base}/{quote}")
-        else:
-            rates = await forex_service.get_all_rates(base)
-            if rates:
-                print(f"\n{base} 汇率表:\n")
-                for code, r in sorted(rates.items(), key=lambda x: x[1].rate, reverse=True):
-                    display = forex_service.format_currency_display(code)
-                    print(f"  {display}: {r.rate:.4f}")
-                print()
-            else:
-                ConsolePresenter.print_error(f"无法获取 {base} 汇率")
-    finally:
-        await http_client.close()
-
-
-# ============ Search ============
-
-
-@app.command()
-def find(keyword: str):
-    """搜索资产"""
-    ConsolePresenter.print_warning("搜索功能暂不可用")
-
+app.add_typer(watchlist_app, name="watchlist", help="自选股管理 (add/rm/ls)")
+app.add_typer(gold_app, name="gold", help="黄金数据 (reserves/supply)")
+app.add_typer(gpr_app, name="gpr", help="地缘政治风险指数 (index/history)")
+app.add_typer(fx_app, name="fx", help="汇率查询 (rate/list)")
 
 if __name__ == "__main__":
     app()
