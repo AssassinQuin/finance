@@ -1,5 +1,7 @@
 """GPR (Geopolitical Risk Index) store for V2 database operations."""
 
+from datetime import date
+
 from ..models import GPRHistory
 from .base import BaseStore
 
@@ -14,7 +16,7 @@ class GPRHistoryStore(BaseStore[GPRHistory]):
         return GPRHistory(
             id=row.get("id"),
             country_code=row.get("country_code", "WLD"),
-            report_date=row.get("report_date"),
+            report_date=row["report_date"],
             gpr_index=float(row.get("gpr_index", 0)),
             data_source=row.get("data_source", "Caldara-Iacoviello"),
             created_at=row.get("created_at"),
@@ -114,6 +116,34 @@ class GPRHistoryStore(BaseStore[GPRHistory]):
                 months,
             )
             return [cls._row_to_model(dict(row)) for row in rows]
+
+    @classmethod
+    async def get_latest_date(cls, country_code: str = "WLD") -> date | None:
+        """Get the latest data date for a country.
+
+        Args:
+            country_code: Country code (default: WLD for global)
+
+        Returns:
+            Latest report_date or None if no data
+        """
+        if not cls._is_enabled():
+            return None
+
+        pool = cls._pool()
+        if not pool:
+            return None
+
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT MAX(report_date) as latest_date
+                FROM fact_gpr
+                WHERE country_code = $1
+                """,
+                country_code.upper(),
+            )
+            return row["latest_date"] if row else None
 
     @classmethod
     async def _get_or_create_source(cls, conn, source_name: str) -> int | None:

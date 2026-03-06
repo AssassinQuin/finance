@@ -116,7 +116,11 @@ class HttpClient:
 
     async def close(self):
         if self.session and not self.session.closed:
+            connector = self.session.connector
             await self.session.close()
+            if connector and not connector.closed:
+                await connector.close()
+        self.session = None
 
 
 http_client = HttpClient()

@@ -29,8 +29,9 @@ def index(
 
 async def _index(update: bool, chart: bool) -> None:
     try:
+        await Database.init(config)
+
         if update:
-            await Database.init(config)
             result = await gpr_service.update_data()
             if result.get("success"):
                 ConsolePresenter.print_success(f"已更新GPR数据: {result.get('records', 0)} 条记录")
@@ -38,7 +39,7 @@ async def _index(update: bool, chart: bool) -> None:
                 ConsolePresenter.print_error(f"更新失败: {result.get('error', 'Unknown error')}")
                 return
 
-        analysis = gpr_service.get_gpr_analysis()
+        analysis = await gpr_service.get_gpr_analysis()
         if not analysis:
             ConsolePresenter.print_warning("暂无 GPR 数据")
             return
@@ -46,7 +47,7 @@ async def _index(update: bool, chart: bool) -> None:
         ConsolePresenter.print_gpr_report(analysis)
 
         if chart:
-            history = gpr_service.get_gpr_history(months=120)
+            history = await gpr_service.get_gpr_history(months=120)
             ConsolePresenter.print_gpr_chart(history)
     finally:
         if Database.is_enabled():
@@ -58,8 +59,17 @@ def history(
     months: int = typer.Option(120, "-m", "--months", help="显示月数"),
 ):
     """GPR 历史趋势"""
-    data = gpr_service.get_gpr_history(months=months)
-    if data:
-        ConsolePresenter.print_gpr_chart(data)
-    else:
-        ConsolePresenter.print_warning("暂无历史数据")
+    asyncio.run(_history(months))
+
+
+async def _history(months: int) -> None:
+    try:
+        await Database.init(config)
+        data = await gpr_service.get_gpr_history(months=months)
+        if data:
+            ConsolePresenter.print_gpr_chart(data)
+        else:
+            ConsolePresenter.print_warning("暂无历史数据")
+    finally:
+        if Database.is_enabled():
+            await Database.close()

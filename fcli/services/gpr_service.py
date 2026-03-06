@@ -6,7 +6,10 @@ import json
 import logging
 from datetime import date
 
+from dateutil.relativedelta import relativedelta
+
 from ..core.config import settings
+from ..core.database import Database
 from ..core.models import GPRHistory
 from ..core.stores import GPRHistoryStore
 from .scrapers.gpr_scraper import GPRScraper
@@ -23,6 +26,24 @@ class GPRService:
         if not settings.data_dir.exists():
             settings.data_dir.mkdir(parents=True)
 
+    async def _check_and_update_stale_data(self) -> None:
+        if not Database.is_enabled():
+            return
+
+        today = date.today()
+        last_month = today - relativedelta(months=1)
+        target_date = date(last_month.year, last_month.month, 1)
+
+        latest_date = await GPRHistoryStore.get_latest_date()
+
+        if latest_date is None or latest_date < target_date:
+            logger.info("GPR data is stale, triggering auto-update...")
+            result = await self.update_data()
+            if result.get("success"):
+                logger.info(f"Auto-updated GPR data: {result.get('records', 0)} records")
+            else:
+                logger.warning(f"Auto-update failed: {result.get('error', 'Unknown error')}")
+
     def load_data(self) -> dict[str, float]:
         if not self.storage_file.exists():
             logger.warning("No GPR data file found. Run 'fcli gpr --update' to fetch data.")
@@ -30,7 +51,9 @@ class GPRService:
         with open(self.storage_file, encoding="utf-8") as f:
             return json.load(f)
 
-    def get_gpr_history(self, months: int = 12) -> list[dict]:
+    async def get_gpr_history(self, months: int = 12) -> list[dict]:
+        await self._check_and_update_stale_data()
+
         data = self.load_data()
         sorted_dates = sorted(data.keys())
 
@@ -40,7 +63,9 @@ class GPRService:
 
         return history[-months:]
 
-    def get_gpr_analysis(self) -> dict:
+    async def get_gpr_analysis(self) -> dict:
+        await self._check_and_update_stale_data()
+
         data = self.load_data()
         dates = sorted(data.keys(), reverse=True)
         if not dates:
@@ -59,11 +84,9 @@ class GPRService:
                     target_y -= 1
                 target_date = f"{target_y}-{target_m:02d}"
 
-                # 尝试精确匹配
                 if target_date in data:
                     return data[target_date]
 
-                # 尝试找目标日期之前最近的日期
                 for d in dates:
                     if d <= target_date:
                         return data[d]
@@ -87,7 +110,6 @@ class GPRService:
             else:
                 analysis["horizons"][label] = None
 
-        # 风险等级评估
         risk_level = "正常 (Normal)"
         risk_color = "white"
         if latest_val > 250:
@@ -105,21 +127,12 @@ class GPRService:
         return analysis
 
     async def update_data(self) -> dict:
-        """
-        Update GPR data from remote source and save to database.
-
-        Returns:
-            {"success": True, "records": N} or {"success": False, "error": "..."}
-        """
         try:
             logger.info("Starting GPR data update...")
 
-            scraper = GPRScraper()
-            try:
+            async with GPRScraper() as scraper:
                 raw_data = await scraper.fetch_gpr_data()
                 logger.info(f"Fetched {len(raw_data)} GPR data points from remote")
-            finally:
-                await scraper.close()
 
             if not raw_data:
                 return {"success": False, "error": "No data fetched from remote source"}
@@ -138,8 +151,6 @@ class GPRService:
                         country_code="WLD",
                         report_date=report_date,
                         gpr_index=gpr_value,
-                        gpr_threat=None,
-                        gpr_act=None,
                         data_source="Caldara-Iacoviello",
                     )
                     records.append(record)

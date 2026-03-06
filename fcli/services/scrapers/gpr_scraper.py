@@ -21,6 +21,13 @@ class GPRScraper:
         self._session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+        return False
+
     def _get_proxy(self) -> str | None:
         if config.proxy.enabled:
             return config.proxy.http

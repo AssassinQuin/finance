@@ -38,11 +38,15 @@ class GoldService:
         return await Database.init(config)
 
     async def close(self) -> None:
-        """Close HTTP client session"""
+        """Close HTTP client sessions"""
         if self._imf_scraper:
             await self._imf_scraper.close()
         if self._wgc_scraper:
             await self._wgc_scraper.close()
+        # Close global http_client singleton
+        from ..infra.http_client import http_client
+
+        await http_client.close()
 
     async def _check_and_update_stale_data(self, country_codes: list[str] | None = None) -> None:
         """
