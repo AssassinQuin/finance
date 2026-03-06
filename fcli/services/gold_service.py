@@ -5,7 +5,10 @@ Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
 """
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
+
+from dateutil.relativedelta import relativedelta
 
 from ..core.config import config
 from ..core.database import Database
@@ -13,6 +16,7 @@ from ..core.models import GoldReserve
 from ..core.models.gold_supply_demand import GoldSupplyDemand
 from ..core.stores import GoldReserveStore
 from ..core.stores.gold_supply_demand import GoldSupplyDemandStore
+from ..infra.http_client import http_client
 from .scrapers.imf_scraper import GOLD_COUNTRY_CODES, IMFScraper
 from .scrapers.wgc_scraper import WGCScraper
 
@@ -29,6 +33,10 @@ class GoldService:
     - 10+ years of history
     """
 
+    # 常量定义
+    DEFAULT_HISTORY_MONTHS = 120  # 默认历史数据月数 (10年)
+    DEFAULT_SUPPLY_DEMAND_LIMIT = 8  # 默认供需数据季度数 (2年)
+
     def __init__(self):
         self._imf_scraper = IMFScraper()
         self._wgc_scraper = WGCScraper()
@@ -43,10 +51,67 @@ class GoldService:
             await self._imf_scraper.close()
         if self._wgc_scraper:
             await self._wgc_scraper.close()
-        # Close global http_client singleton
-        from ..infra.http_client import http_client
-
         await http_client.close()
+
+    # ==================== 私有辅助方法 ====================
+
+    @staticmethod
+    def _transform_imf_to_dict(
+        country_name: str,
+        country_code: str,
+        amount: float,
+        period: str,
+        source: str = "IMF",
+    ) -> dict[str, Any]:
+        """
+        统一转换 IMF 数据为字典格式。
+
+        Args:
+            country_name: 国家名称
+            country_code: 国家代码
+            amount: 黄金储备量（吨）
+            period: 时间周期 (YYYY-MM)
+            source: 数据源
+
+        Returns:
+            标准化的字典格式
+        """
+        return {
+            "country": country_name,
+            "code": country_code,
+            "amount": amount,
+            "date": period,
+            "source": source,
+        }
+
+    @staticmethod
+    def _supply_demand_to_dict(db_data: GoldSupplyDemand) -> dict[str, Any]:
+        """Convert database model to API dict format."""
+        return {
+            "period": db_data.period,
+            "year": db_data.year,
+            "quarter": db_data.quarter,
+            "supply": {
+                "mine_production": db_data.mine_production,
+                "recycling": db_data.recycling,
+                "net_hedging": db_data.net_hedging,
+                "total": db_data.total_supply,
+            },
+            "demand": {
+                "jewelry": db_data.jewelry,
+                "technology": db_data.technology,
+                "investment": {
+                    "total": db_data.total_investment,
+                    "bars_coins": db_data.bars_coins,
+                    "etfs": db_data.etfs,
+                    "otc": db_data.otc_investment,
+                },
+                "central_banks": db_data.central_banks,
+                "total": db_data.total_demand,
+            },
+            "price_avg": db_data.price_avg_usd,
+            "source": db_data.data_source or "WGC",
+        }
 
     async def _check_and_update_stale_data(self, country_codes: list[str] | None = None) -> None:
         """
@@ -57,10 +122,6 @@ class GoldService:
         if not Database.is_enabled():
             return
 
-        from datetime import date
-
-        from dateutil.relativedelta import relativedelta
-
         # 计算上个月的日期（目标日期）
         today = date.today()
         last_month = today - relativedelta(months=1)
@@ -69,31 +130,23 @@ class GoldService:
         # 获取所有国家的最新数据日期
         latest_dates = await GoldReserveStore.get_all_latest_dates()
 
-        # 找出需要更新的国家
-        countries_to_update = []
-
+        # 确定需要检查的国家集合
         if country_codes:
-            # 检查指定的国家
-            for code in country_codes:
-                code_upper = code.upper()
-                if code_upper not in latest_dates:
-                    # 数据库中没有这个国家的数据
-                    countries_to_update.append(code_upper)
-                elif latest_dates[code_upper] < target_date:
-                    # 数据不是上个月的
-                    countries_to_update.append(code_upper)
+            codes_to_check = {code.upper() for code in country_codes}
         else:
-            # 检查所有支持的国家
-            for code in GOLD_COUNTRY_CODES.keys():
-                if code not in latest_dates:
-                    countries_to_update.append(code)
-                elif latest_dates[code] < target_date:
-                    countries_to_update.append(code)
+            codes_to_check = set(GOLD_COUNTRY_CODES.keys())
+
+        # 使用集合操作找出需要更新的国家
+        countries_to_update = [
+            code for code in codes_to_check if code not in latest_dates or latest_dates[code] < target_date
+        ]
 
         if countries_to_update:
             logger.info(f"Auto-updating {len(countries_to_update)} countries with stale data...")
             # 只获取最新数据（1个月）
             await self.save_to_database(country_codes=countries_to_update, years=1)
+
+    # ==================== 黄金储备数据获取 ====================
 
     async def get_latest(self, country_codes: list[str] | None = None) -> list[dict]:
         """
@@ -128,20 +181,19 @@ class GoldService:
         try:
             data = await self._imf_scraper.batch_get_latest_reserves(country_codes)
             return [
-                {
-                    "country": item.get("country_name"),
-                    "code": item.get("country_code"),
-                    "amount": item.get("value", 0),  # IMF scraper returns tonnes directly
-                    "date": item.get("period"),
-                    "source": "IMF",
-                }
+                self._transform_imf_to_dict(
+                    country_name=item.get("country_name", ""),
+                    country_code=item.get("country_code", ""),
+                    amount=item.get("value", 0),
+                    period=item.get("period", ""),
+                )
                 for item in data
             ]
         except Exception as e:
             logger.error(f"Failed to fetch from IMF: {e}")
             return []
 
-    async def get_history(self, country_code: str, months: int = 120) -> list[dict]:
+    async def get_history(self, country_code: str, months: int = DEFAULT_HISTORY_MONTHS) -> list[dict]:
         """
         Get historical gold reserves for a country.
 
@@ -158,13 +210,13 @@ class GoldService:
                 history = await GoldReserveStore.get_history(country_code.upper(), months)
                 if history:
                     return [
-                        {
-                            "country": r.country_name,
-                            "code": r.country_code,
-                            "amount": r.amount_tonnes,
-                            "date": r.report_date.strftime("%Y-%m"),
-                            "source": r.data_source,
-                        }
+                        self._transform_imf_to_dict(
+                            country_name=r.country_name,
+                            country_code=r.country_code,
+                            amount=r.amount_tonnes,
+                            period=r.report_date.strftime("%Y-%m"),
+                            source=r.data_source,
+                        )
                         for r in history
                     ]
             except Exception as e:
@@ -176,17 +228,15 @@ class GoldService:
             years = max(1, months // 12)
             data = await self._imf_scraper.get_gold_reserves_history(country_code.upper(), years=years)
 
-            result = [
-                {
-                    "country": data.get("country_name"),
-                    "code": data.get("country_code"),
-                    "amount": value,  # IMF scraper returns tonnes directly, no conversion needed
-                    "date": period,
-                    "source": "IMF",
-                }
+            return [
+                self._transform_imf_to_dict(
+                    country_name=data.get("country_name", ""),
+                    country_code=data.get("country_code", ""),
+                    amount=value,
+                    period=period,
+                )
                 for period, value in data.get("data", {}).items()
             ]
-            return result
         except Exception as e:
             logger.error(f"Failed to get history from IMF: {e}")
             return []
@@ -209,19 +259,20 @@ class GoldService:
         for country_data in results:
             code = country_data.get("country_code")
             history = [
-                {
-                    "country": country_data.get("country_name"),
-                    "code": code,
-                    "amount": value,  # IMF scraper returns tonnes directly
-                    "date": period,
-                    "source": "IMF",
-                }
+                self._transform_imf_to_dict(
+                    country_name=country_data.get("country_name", ""),
+                    country_code=code,
+                    amount=value,
+                    period=period,
+                )
                 for period, value in country_data.get("data", {}).items()
             ]
             history.sort(key=lambda x: x["date"], reverse=True)
             output[code] = history
 
         return output
+
+    # ==================== 数据库保存 ====================
 
     async def save_to_database(self, country_codes: list[str] | None = None, years: int = 10) -> int:
         """
@@ -274,34 +325,7 @@ class GoldService:
 
         return saved
 
-    def _usd_to_tonnes(self, usd_millions: float) -> float:
-        """
-        DEPRECATED: This function should NOT be used for IMF data.
-
-        IMF scraper already returns values in tonnes directly.
-        This function is kept for potential future use with USD-based data sources.
-
-        Convert gold reserves from million USD to tonnes.
-        Uses approximate gold price of $2300/oz (2024 average).
-
-        Args:
-            usd_millions: Value in million USD
-
-        Returns:
-            Tonnes of gold
-        """
-        if not usd_millions or usd_millions <= 0:
-            return 0.0
-
-        GOLD_PRICE_USD_PER_OUNCE = config.gold.price_usd_per_ounce
-        GRAMS_PER_OUNCE = 31.1035
-
-        usd = usd_millions * 1_000_000
-        ounces = usd / GOLD_PRICE_USD_PER_OUNCE
-        grams = ounces * GRAMS_PER_OUNCE
-        tonnes = grams / 1_000_000
-
-        return round(tonnes, 2)
+    # ==================== 辅助方法 ====================
 
     def get_supported_countries(self) -> dict[str, str]:
         """Get list of supported country codes and names"""
@@ -332,20 +356,7 @@ class GoldService:
             try:
                 results = await GoldReserveStore.get_latest_with_multi_period_changes()
                 if results:
-                    return [
-                        {
-                            "country": r.get("country"),
-                            "code": r.get("code"),
-                            "amount": r.get("amount"),
-                            "date": str(r.get("date")) if r.get("date") else None,
-                            "source": r.get("source", "IMF"),
-                            "change_1m": r.get("change_1m", 0.0) or 0.0,
-                            "change_3m": r.get("change_3m", 0.0) or 0.0,
-                            "change_6m": r.get("change_6m", 0.0) or 0.0,
-                            "change_12m": r.get("change_12m", 0.0) or 0.0,
-                        }
-                        for r in results
-                    ]
+                    return self._format_multi_period_results(results)
             except Exception as e:
                 logger.error(f"Failed to get from database: {e}")
 
@@ -355,11 +366,12 @@ class GoldService:
             data = await self._imf_scraper.batch_get_latest_reserves()
             return [
                 {
-                    "country": item.get("country_name"),
-                    "code": item.get("country_code"),
-                    "amount": item.get("value", 0),
-                    "date": item.get("period"),
-                    "source": "IMF",
+                    **self._transform_imf_to_dict(
+                        country_name=item.get("country_name", ""),
+                        country_code=item.get("country_code", ""),
+                        amount=item.get("value", 0),
+                        period=item.get("period", ""),
+                    ),
                     "change_1m": 0.0,
                     "change_3m": 0.0,
                     "change_6m": 0.0,
@@ -370,6 +382,26 @@ class GoldService:
         except Exception as e:
             logger.error(f"Failed to fetch from IMF: {e}")
             return []
+
+    @staticmethod
+    def _format_multi_period_results(results: list[dict]) -> list[dict]:
+        """格式化多时间段变化数据"""
+        return [
+            {
+                "country": r.get("country"),
+                "code": r.get("code"),
+                "amount": r.get("amount"),
+                "date": str(r.get("date")) if r.get("date") else None,
+                "source": r.get("source", "IMF"),
+                "change_1m": r.get("change_1m", 0.0) or 0.0,
+                "change_3m": r.get("change_3m", 0.0) or 0.0,
+                "change_6m": r.get("change_6m", 0.0) or 0.0,
+                "change_12m": r.get("change_12m", 0.0) or 0.0,
+            }
+            for r in results
+        ]
+
+    # ==================== 供需数据 ====================
 
     async def fetch_global_supply_demand(self, force_update: bool = False) -> dict | None:
         """
@@ -403,91 +435,72 @@ class GoldService:
 
             # Save to database if enabled
             if Database.is_enabled():
-                try:
-                    db_model = GoldSupplyDemand(
-                        year=data.year,
-                        quarter=data.quarter,
-                        period=data.period,
-                        mine_production=data.supply.mine_production,
-                        recycling=data.supply.recycling,
-                        net_hedging=data.supply.net_hedging,
-                        total_supply=data.supply.total_supply,
-                        jewelry=data.demand.jewelry,
-                        technology=data.demand.technology,
-                        total_investment=data.demand.total_investment,
-                        bars_coins=data.demand.bars_coins,
-                        etfs=data.demand.etfs,
-                        otc_investment=data.demand.otc_investment,
-                        central_banks=data.demand.central_banks,
-                        total_demand=data.demand.total_demand,
-                        supply_demand_balance=data.supply.total_supply - data.demand.total_demand,
-                        price_avg_usd=data.price_avg,
-                        data_source="WGC",
-                        fetch_time=datetime.now(),
-                    )
-                    await GoldSupplyDemandStore.save_quarterly(db_model)
-                    logger.info(f"Saved supply/demand data for {data.period} to database")
-                except Exception as e:
-                    logger.error(f"Failed to save supply/demand to database: {e}")
+                await self._save_supply_demand_to_db(data)
 
-            return {
-                "period": data.period,
-                "year": data.year,
-                "quarter": data.quarter,
-                "supply": {
-                    "mine_production": data.supply.mine_production,
-                    "recycling": data.supply.recycling,
-                    "net_hedging": data.supply.net_hedging,
-                    "total": data.supply.total_supply,
-                },
-                "demand": {
-                    "jewelry": data.demand.jewelry,
-                    "technology": data.demand.technology,
-                    "investment": {
-                        "total": data.demand.total_investment,
-                        "bars_coins": data.demand.bars_coins,
-                        "etfs": data.demand.etfs,
-                        "otc": data.demand.otc_investment,
-                    },
-                    "central_banks": data.demand.central_banks,
-                    "total": data.demand.total_demand,
-                },
-                "price_avg": data.price_avg,
-                "source": "WGC",
-            }
+            return self._format_supply_demand_response(data)
         except Exception as e:
             logger.error(f"Failed to fetch supply/demand data: {e}")
             return None
 
-    def _supply_demand_to_dict(self, db_data: GoldSupplyDemand) -> dict:
-        """Convert database model to API dict format."""
+    async def _save_supply_demand_to_db(self, data: Any) -> None:
+        """保存供需数据到数据库"""
+        try:
+            db_model = GoldSupplyDemand(
+                year=data.year,
+                quarter=data.quarter,
+                period=data.period,
+                mine_production=data.supply.mine_production,
+                recycling=data.supply.recycling,
+                net_hedging=data.supply.net_hedging,
+                total_supply=data.supply.total_supply,
+                jewelry=data.demand.jewelry,
+                technology=data.demand.technology,
+                total_investment=data.demand.total_investment,
+                bars_coins=data.demand.bars_coins,
+                etfs=data.demand.etfs,
+                otc_investment=data.demand.otc_investment,
+                central_banks=data.demand.central_banks,
+                total_demand=data.demand.total_demand,
+                supply_demand_balance=data.supply.total_supply - data.demand.total_demand,
+                price_avg_usd=data.price_avg,
+                data_source="WGC",
+                fetch_time=datetime.now(),
+            )
+            await GoldSupplyDemandStore.save_quarterly(db_model)
+            logger.info(f"Saved supply/demand data for {data.period} to database")
+        except Exception as e:
+            logger.error(f"Failed to save supply/demand to database: {e}")
+
+    @staticmethod
+    def _format_supply_demand_response(data: Any) -> dict[str, Any]:
+        """格式化供需数据响应"""
         return {
-            "period": db_data.period,
-            "year": db_data.year,
-            "quarter": db_data.quarter,
+            "period": data.period,
+            "year": data.year,
+            "quarter": data.quarter,
             "supply": {
-                "mine_production": db_data.mine_production,
-                "recycling": db_data.recycling,
-                "net_hedging": db_data.net_hedging,
-                "total": db_data.total_supply,
+                "mine_production": data.supply.mine_production,
+                "recycling": data.supply.recycling,
+                "net_hedging": data.supply.net_hedging,
+                "total": data.supply.total_supply,
             },
             "demand": {
-                "jewelry": db_data.jewelry,
-                "technology": db_data.technology,
+                "jewelry": data.demand.jewelry,
+                "technology": data.demand.technology,
                 "investment": {
-                    "total": db_data.total_investment,
-                    "bars_coins": db_data.bars_coins,
-                    "etfs": db_data.etfs,
-                    "otc": db_data.otc_investment,
+                    "total": data.demand.total_investment,
+                    "bars_coins": data.demand.bars_coins,
+                    "etfs": data.demand.etfs,
+                    "otc": data.demand.otc_investment,
                 },
-                "central_banks": db_data.central_banks,
-                "total": db_data.total_demand,
+                "central_banks": data.demand.central_banks,
+                "total": data.demand.total_demand,
             },
-            "price_avg": db_data.price_avg_usd,
-            "source": db_data.data_source or "WGC",
+            "price_avg": data.price_avg,
+            "source": "WGC",
         }
 
-    async def get_supply_demand_history(self, limit: int = 8) -> list[dict]:
+    async def get_supply_demand_history(self, limit: int = DEFAULT_SUPPLY_DEMAND_LIMIT) -> list[dict]:
         """
         Get historical supply/demand data from database.
 
@@ -529,6 +542,8 @@ class GoldService:
         except Exception as e:
             logger.error(f"Failed to get supply/demand for {year}Q{quarter}: {e}")
             return None
+
+    # ==================== 特定国家数据 ====================
 
     async def get_china_history_online(self, months: int = 60) -> list[dict]:
         """
