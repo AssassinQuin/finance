@@ -2,20 +2,10 @@ import asyncio
 
 import typer
 
-from ..core.config import config
-from ..core.database import Database
 from ..services.watchlist_service import watchlist_service
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="自选股管理")
-
-
-async def _init_db():
-    await Database.init(config)
-
-
-async def _close_db():
-    await Database.close()
 
 
 @app.callback(invoke_without_command=True)
@@ -23,12 +13,9 @@ def list_assets():
     """列出所有自选股 (默认命令)"""
 
     async def _list():
-        try:
-            await _init_db()
+        with ConsolePresenter.status("获取自选股列表..."):
             assets = await watchlist_service.list_assets()
-            ConsolePresenter.print_asset_table(assets)
-        finally:
-            await _close_db()
+        ConsolePresenter.print_asset_table(assets)
 
     asyncio.run(_list())
 
@@ -45,11 +32,9 @@ def add(codes: list[str]):
     """
 
     async def _add() -> int:
-        try:
-            await _init_db()
-            return await watchlist_service.add_assets(codes)
-        finally:
-            await _close_db()
+        with ConsolePresenter.status("添加自选股..."):
+            count = await watchlist_service.add_assets(codes)
+        return count
 
     count = asyncio.run(_add())
     ConsolePresenter.print_success(f"已添加 {count} 个自选")
@@ -64,11 +49,9 @@ def rm(code: str):
     """
 
     async def _rm() -> bool:
-        try:
-            await _init_db()
-            return await watchlist_service.remove_asset(code)
-        finally:
-            await _close_db()
+        with ConsolePresenter.status("删除自选股..."):
+            result = await watchlist_service.remove_asset(code)
+        return result
 
     if asyncio.run(_rm()):
         ConsolePresenter.print_success(f"已删除 {code}")
@@ -81,12 +64,9 @@ def ls():
     """列出所有自选股"""
 
     async def _ls():
-        try:
-            await _init_db()
+        with ConsolePresenter.status("获取自选股列表..."):
             assets = await watchlist_service.list_assets()
-            ConsolePresenter.print_asset_table(assets)
-        finally:
-            await _close_db()
+        ConsolePresenter.print_asset_table(assets)
 
     asyncio.run(_ls())
 

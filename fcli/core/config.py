@@ -522,22 +522,27 @@ class SymbolRegistry:
         """从代码推断市场类型
 
         Args:
-            code: 股票代码
+            code: 股票代码（支持 SH/SZ/HK 前缀或纯代码）
 
         Returns:
             推断的市场类型
         """
         from .models.base import Market
 
-        # A股: 6位数字，以 0/3/6 开头
-        if code.isdigit() and len(code) == 6:
-            return Market.CN
-        # 港股: 5位数字
-        if code.isdigit() and len(code) == 5:
+        code_upper = code.upper().strip()
+
+        # 港股：HK前缀 或 5位数字
+        if code_upper.startswith("HK") or (code.isdigit() and len(code) == 5):
             return Market.HK
-        # 美股: 字母
+
+        # A股：SH/SZ前缀 或 6位数字
+        if code_upper.startswith(("SH", "SZ")) or (code.isdigit() and len(code) == 6):
+            return Market.CN
+
+        # 美股：字母
         if code.isalpha():
             return Market.US
+
         # 默认美股
         return Market.US
 

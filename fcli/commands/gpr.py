@@ -2,8 +2,6 @@ import asyncio
 
 import typer
 
-from ..core.config import config
-from ..core.database import Database
 from ..services.gpr_service import gpr_service
 from ..utils.presenter import ConsolePresenter
 
@@ -28,30 +26,27 @@ def index(
 
 
 async def _index(update: bool, chart: bool) -> None:
-    try:
-        await Database.init(config)
-
-        if update:
+    if update:
+        with ConsolePresenter.status("更新 GPR 数据..."):
             result = await gpr_service.update_data()
-            if result.get("success"):
-                ConsolePresenter.print_success(f"已更新GPR数据: {result.get('records', 0)} 条记录")
-            else:
-                ConsolePresenter.print_error(f"更新失败: {result.get('error', 'Unknown error')}")
-                return
-
-        analysis = await gpr_service.get_gpr_analysis()
-        if not analysis:
-            ConsolePresenter.print_warning("暂无 GPR 数据")
+        if result.get("success"):
+            ConsolePresenter.print_success(f"已更新 GPR 数据：{result.get('records', 0)} 条记录")
+        else:
+            ConsolePresenter.print_error(f"更新失败：{result.get('error', 'Unknown error')}")
             return
 
-        ConsolePresenter.print_gpr_report(analysis)
+    with ConsolePresenter.status("获取 GPR 分析报告..."):
+        analysis = await gpr_service.get_gpr_analysis()
+    if not analysis:
+        ConsolePresenter.print_warning("暂无 GPR 数据")
+        return
 
-        if chart:
+    ConsolePresenter.print_gpr_report(analysis)
+
+    if chart:
+        with ConsolePresenter.status("获取历史数据..."):
             history = await gpr_service.get_gpr_history(months=120)
-            ConsolePresenter.print_gpr_chart(history)
-    finally:
-        if Database.is_enabled():
-            await Database.close()
+        ConsolePresenter.print_gpr_chart(history)
 
 
 @app.command()
@@ -63,13 +58,9 @@ def history(
 
 
 async def _history(months: int) -> None:
-    try:
-        await Database.init(config)
+    with ConsolePresenter.status("获取历史数据..."):
         data = await gpr_service.get_gpr_history(months=months)
-        if data:
-            ConsolePresenter.print_gpr_chart(data)
-        else:
-            ConsolePresenter.print_warning("暂无历史数据")
-    finally:
-        if Database.is_enabled():
-            await Database.close()
+    if data:
+        ConsolePresenter.print_gpr_chart(data)
+    else:
+        ConsolePresenter.print_warning("暂无历史数据")
