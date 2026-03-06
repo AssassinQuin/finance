@@ -141,8 +141,8 @@ class HybridStorage(StorageABC):
         self._last_health_check = current_time
 
         try:
+            await Database._ensure_initialized()
             if Database.is_enabled():
-                await Database.fetch_one("SELECT 1")
                 if self._postgres_storage is None:
                     self._postgres_storage = PostgresStorage()
                 self._postgres_available = True

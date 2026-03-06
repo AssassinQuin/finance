@@ -2,6 +2,7 @@ import asyncio
 
 import typer
 
+from ..core.container import container
 from ..services.watchlist_service import watchlist_service
 from ..utils.presenter import ConsolePresenter
 
@@ -9,15 +10,25 @@ app = typer.Typer(help="自选股管理")
 
 
 @app.callback(invoke_without_command=True)
-def list_assets():
-    """列出所有自选股 (默认命令)"""
+def query_quotes(ctx: typer.Context):
+    """查询所有自选股行情 (默认命令)"""
+    # Skip if a subcommand was explicitly invoked to avoid double output
+    if ctx.invoked_subcommand is not None:
+        return
 
-    async def _list():
-        with ConsolePresenter.status("获取自选股列表..."):
-            assets = await watchlist_service.list_assets()
-        ConsolePresenter.print_asset_table(assets)
+    async def _query():
+        try:
+            with ConsolePresenter.status("获取自选股行情..."):
+                assets = await watchlist_service.list_assets()
+                if not assets:
+                    ConsolePresenter.print_warning("自选股列表为空，使用 'fcli watchlist add <代码>' 添加")
+                    return
+                quotes = await container.quote_service.fetch_all(assets)
+            ConsolePresenter.print_quote_table(quotes)
+        finally:
+            await container.cleanup()
 
-    asyncio.run(_list())
+    asyncio.run(_query())
 
 
 @app.command()

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""FCLI - 命令行金融工具"""
 
-import atexit
 import asyncio
 
 import typer
@@ -10,8 +8,6 @@ from .commands.fx import app as fx_app
 from .commands.gold import app as gold_app
 from .commands.gpr import app as gpr_app
 from .commands.watchlist import app as watchlist_app
-from .core.database import Database
-from .infra.http_client import http_client
 
 app = typer.Typer(
     name="fcli",
@@ -21,33 +17,32 @@ app = typer.Typer(
 )
 
 
-def cleanup():
-    """应用退出时自动清理资源"""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        if Database.is_enabled():
-            loop.run_until_complete(Database.close())
-
-        loop.run_until_complete(http_client.close())
-
-        loop.close()
-    except Exception:
-        pass
-
-
-atexit.register(cleanup)
-
-
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
     """FCLI - 命令行金融工具
 
-    默认行为：查询所有自选行情 (等同于 'fcli watchlist ls')
+    默认行为：查询所有自选行情 (等同于 'fcli watchlist')
     """
-    if ctx.invoked_subcommand is None:
-        print("使用 'fcli watchlist ls' 查看自选股")
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from .core.container import container
+    from .services.watchlist_service import watchlist_service
+    from .utils.presenter import ConsolePresenter
+
+    async def _query_quotes():
+        try:
+            with ConsolePresenter.status("获取自选股行情..."):
+                assets = await watchlist_service.list_assets()
+                if not assets:
+                    ConsolePresenter.print_warning("自选股列表为空，使用 'fcli watchlist add <代码>' 添加")
+                    return
+                quotes = await container.quote_service.fetch_all(assets)
+            ConsolePresenter.print_quote_table(quotes)
+        finally:
+            await container.cleanup()
+
+    asyncio.run(_query_quotes())
 
 
 app.add_typer(watchlist_app, name="watchlist", help="自选股管理 (add/rm/ls)")
