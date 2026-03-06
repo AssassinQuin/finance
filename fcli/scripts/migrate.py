@@ -5,7 +5,6 @@ Uses UNLOGGED table for cache to avoid WAL overhead.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -13,10 +12,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+import logging
+
 from fcli.core.config import config
 from fcli.core.database import Database
-
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,11 +51,11 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_gold_country_date 
+    CREATE INDEX IF NOT EXISTS idx_gold_country_date
     ON gold_reserves(country_code, data_date DESC)
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_gold_data_date 
+    CREATE INDEX IF NOT EXISTS idx_gold_data_date
     ON gold_reserves(data_date DESC)
     """,
     # Central bank schedules
@@ -91,7 +90,7 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_fetch_logs_task_time 
+    CREATE INDEX IF NOT EXISTS idx_fetch_logs_task_time
     ON fetch_logs(task_name, started_at DESC)
     """,
     # Quotes table
@@ -116,7 +115,7 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_quotes_code_time 
+    CREATE INDEX IF NOT EXISTS idx_quotes_code_time
     ON quotes(code, quote_time DESC)
     """,
     # Exchange rates
@@ -132,7 +131,7 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_rates_base_quote_date 
+    CREATE INDEX IF NOT EXISTS idx_rates_base_quote_date
     ON exchange_rates(base_currency, quote_currency, fetched_at DESC)
     """,
     # Watchlist assets
@@ -149,7 +148,7 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_watchlist_active 
+    CREATE INDEX IF NOT EXISTS idx_watchlist_active
     ON watchlist_assets(is_active) WHERE is_active = TRUE
     """,
     # GPR History
@@ -164,7 +163,7 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_gpr_date 
+    CREATE INDEX IF NOT EXISTS idx_gpr_date
     ON gpr_history(data_date DESC)
     """,
     # Gold supply demand
@@ -207,8 +206,8 @@ MIGRATIONS = [
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS idx_cache_expires 
-    ON cache_entries(expires_at) 
+    CREATE INDEX IF NOT EXISTS idx_cache_expires
+    ON cache_entries(expires_at)
     WHERE expires_at IS NOT NULL
     """,
 ]
@@ -344,7 +343,7 @@ async def run_migrations() -> bool:
             try:
                 await Database.execute(
                     """
-                    INSERT INTO central_bank_schedules 
+                    INSERT INTO central_bank_schedules
                     (country_code, country_name, release_frequency, release_day_of_month,
                      release_time, timezone, data_source, source_url, notes)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -411,7 +410,7 @@ async def show_status() -> None:
         row = await Database.fetch_one(
             """
             SELECT EXISTS (
-                SELECT FROM information_schema.tables 
+                SELECT FROM information_schema.tables
                 WHERE table_name = 'migrations'
             )
             """
@@ -455,7 +454,7 @@ async def show_status() -> None:
             row = await Database.fetch_one("SELECT COUNT(*) as cnt FROM cache_entries")
             cache_count = row["cnt"] if row else 0
             row2 = await Database.fetch_one(
-                """SELECT COUNT(*) as cnt FROM cache_entries 
+                """SELECT COUNT(*) as cnt FROM cache_entries
                    WHERE expires_at < CURRENT_TIMESTAMP"""
             )
             expired = row2["cnt"] if row2 else 0

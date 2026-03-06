@@ -1,6 +1,7 @@
-﻿import typer
-import asyncio
+﻿import asyncio
 from datetime import datetime
+
+import typer
 
 from ..core.database import Database
 from ..services.gold_service import gold_service

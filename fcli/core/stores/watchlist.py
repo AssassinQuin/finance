@@ -1,10 +1,7 @@
 import json
-from typing import List, Dict, Optional
 from datetime import datetime
-import asyncpg
 
-from ..database import Database
-from ..models import WatchlistAssetDB, Asset, Market, AssetType
+from ..models import Asset, AssetType, Market, WatchlistAssetDB
 from .base import BaseStore
 
 
@@ -15,7 +12,7 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
     model_class = WatchlistAssetDB
 
     @classmethod
-    def _row_to_model(cls, row: Dict) -> WatchlistAssetDB:
+    def _row_to_model(cls, row: dict) -> WatchlistAssetDB:
         extra_data = row.get("extra")
         if isinstance(extra_data, str):
             extra_data = json.loads(extra_data)
@@ -63,7 +60,7 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         )
 
     @classmethod
-    async def get_all_active(cls) -> List[WatchlistAssetDB]:
+    async def get_all_active(cls) -> list[WatchlistAssetDB]:
         """Get all active watchlist assets."""
         if not cls._is_enabled():
             return []
@@ -79,7 +76,7 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
             return [cls._row_to_model(dict(row)) for row in rows]
 
     @classmethod
-    async def get_by_code(cls, code: str) -> Optional[WatchlistAssetDB]:
+    async def get_by_code(cls, code: str) -> WatchlistAssetDB | None:
         """Get asset by code."""
         if not cls._is_enabled():
             return None
@@ -157,7 +154,7 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
             return result != "DELETE 0"
 
     @classmethod
-    async def get_assets(cls) -> List[Asset]:
+    async def get_assets(cls) -> list[Asset]:
         """Get all active assets as Asset models (for compatibility)."""
         db_assets = await cls.get_all_active()
         return [cls._db_to_asset(db_asset) for db_asset in db_assets]

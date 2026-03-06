@@ -1,6 +1,6 @@
 """Base store class with common database operations."""
 
-from typing import TypeVar, Generic, Type, List, Optional, Dict
+from typing import Generic, TypeVar
 
 from ..database import Database
 
@@ -11,7 +11,7 @@ class BaseStore(Generic[T]):
     """Base class for database stores with common CRUD operations."""
 
     table_name: str
-    model_class: Type[T]
+    model_class: type[T]
     pk_field: str = "id"
 
     @classmethod
@@ -25,12 +25,12 @@ class BaseStore(Generic[T]):
         return Database.is_enabled()
 
     @classmethod
-    def _row_to_model(cls, row: Dict) -> T:
+    def _row_to_model(cls, row: dict) -> T:
         """Convert database row to model. Override in subclass."""
         raise NotImplementedError
 
     @classmethod
-    async def get_by_id(cls, id: int) -> Optional[T]:
+    async def get_by_id(cls, id: int) -> T | None:
         """Get single record by ID."""
         if not cls._is_enabled():
             return None
@@ -46,7 +46,7 @@ class BaseStore(Generic[T]):
             return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
-    async def get_all(cls, limit: int = 100, offset: int = 0) -> List[T]:
+    async def get_all(cls, limit: int = 100, offset: int = 0) -> list[T]:
         """Get all records with pagination."""
         if not cls._is_enabled():
             return []

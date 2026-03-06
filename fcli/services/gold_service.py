@@ -6,7 +6,6 @@ Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
 
 from ..core.config import config
 from ..core.database import Database
@@ -14,8 +13,8 @@ from ..core.models import GoldReserve
 from ..core.models.gold_supply_demand import GoldSupplyDemand
 from ..core.stores import GoldReserveStore
 from ..core.stores.gold_supply_demand import GoldSupplyDemandStore
-from .scrapers.imf_scraper import IMFScraper, GOLD_COUNTRY_CODES
-from .scrapers.wgc_scraper import WGCScraper, QuarterlySupplyDemand
+from .scrapers.imf_scraper import GOLD_COUNTRY_CODES, IMFScraper
+from .scrapers.wgc_scraper import WGCScraper
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class GoldService:
         if self._wgc_scraper:
             await self._wgc_scraper.close()
 
-    async def _check_and_update_stale_data(self, country_codes: Optional[List[str]] = None) -> None:
+    async def _check_and_update_stale_data(self, country_codes: list[str] | None = None) -> None:
         """
         检查并更新过期的数据。
 
@@ -55,6 +54,7 @@ class GoldService:
             return
 
         from datetime import date
+
         from dateutil.relativedelta import relativedelta
 
         # 计算上个月的日期（目标日期）
@@ -91,7 +91,7 @@ class GoldService:
             # 只获取最新数据（1个月）
             await self.save_to_database(country_codes=countries_to_update, years=1)
 
-    async def get_latest(self, country_codes: Optional[List[str]] = None) -> List[Dict]:
+    async def get_latest(self, country_codes: list[str] | None = None) -> list[dict]:
         """
         Get latest gold reserves for countries.
 
@@ -137,7 +137,7 @@ class GoldService:
             logger.error(f"Failed to fetch from IMF: {e}")
             return []
 
-    async def get_history(self, country_code: str, months: int = 120) -> List[Dict]:
+    async def get_history(self, country_code: str, months: int = 120) -> list[dict]:
         """
         Get historical gold reserves for a country.
 
@@ -187,7 +187,7 @@ class GoldService:
             logger.error(f"Failed to get history from IMF: {e}")
             return []
 
-    async def get_all_history(self, years: int = 10) -> Dict[str, List[Dict]]:
+    async def get_all_history(self, years: int = 10) -> dict[str, list[dict]]:
         """
         Get historical gold reserves for all countries.
 
@@ -219,7 +219,7 @@ class GoldService:
 
         return output
 
-    async def save_to_database(self, country_codes: Optional[List[str]] = None, years: int = 10) -> int:
+    async def save_to_database(self, country_codes: list[str] | None = None, years: int = 10) -> int:
         """
         Save gold reserves to database.
 
@@ -299,11 +299,11 @@ class GoldService:
 
         return round(tonnes, 2)
 
-    def get_supported_countries(self) -> Dict[str, str]:
+    def get_supported_countries(self) -> dict[str, str]:
         """Get list of supported country codes and names"""
         return GOLD_COUNTRY_CODES.copy()
 
-    async def fetch_all_with_auto_update(self, force: bool = False) -> List[Dict]:
+    async def fetch_all_with_auto_update(self, force: bool = False) -> list[dict]:
         """
         Fetch all countries' latest gold reserves with auto-update support.
 
@@ -367,7 +367,7 @@ class GoldService:
             logger.error(f"Failed to fetch from IMF: {e}")
             return []
 
-    async def fetch_global_supply_demand(self, force_update: bool = False) -> Optional[Dict]:
+    async def fetch_global_supply_demand(self, force_update: bool = False) -> dict | None:
         """
         Fetch global gold supply/demand balance data from WGC.
 
@@ -455,7 +455,7 @@ class GoldService:
             logger.error(f"Failed to fetch supply/demand data: {e}")
             return None
 
-    def _supply_demand_to_dict(self, db_data: GoldSupplyDemand) -> Dict:
+    def _supply_demand_to_dict(self, db_data: GoldSupplyDemand) -> dict:
         """Convert database model to API dict format."""
         return {
             "period": db_data.period,
@@ -483,7 +483,7 @@ class GoldService:
             "source": db_data.data_source or "WGC",
         }
 
-    async def get_supply_demand_history(self, limit: int = 8) -> List[Dict]:
+    async def get_supply_demand_history(self, limit: int = 8) -> list[dict]:
         """
         Get historical supply/demand data from database.
 
@@ -503,7 +503,7 @@ class GoldService:
             logger.error(f"Failed to get supply/demand history: {e}")
             return []
 
-    async def get_supply_demand_by_quarter(self, year: int, quarter: int) -> Optional[Dict]:
+    async def get_supply_demand_by_quarter(self, year: int, quarter: int) -> dict | None:
         """
         Get supply/demand data for a specific quarter.
 
@@ -526,7 +526,7 @@ class GoldService:
             logger.error(f"Failed to get supply/demand for {year}Q{quarter}: {e}")
             return None
 
-    async def get_china_history_online(self, months: int = 60) -> List[Dict]:
+    async def get_china_history_online(self, months: int = 60) -> list[dict]:
         """
         Get China's gold reserve history from IMF API.
 

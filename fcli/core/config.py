@@ -4,15 +4,17 @@
 无论命令从哪个目录执行。
 """
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from typing import TYPE_CHECKING
+from __future__ import annotations
+
 import os
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
-    from .models.base import Market
+    from .models.base import AssetType, Market
 
 # ============================================================
 # 项目目录和配置文件路径（固定使用项目目录）
@@ -59,18 +61,18 @@ class DatabaseSettings(BaseSettings):
 class TradingHoursSettings(BaseSettings):
     """交易时间配置 - 所有默认值来自 config.toml"""
 
-    cn_morning_start: Optional[str] = Field(default=None)
-    cn_morning_end: Optional[str] = Field(default=None)
-    cn_afternoon_start: Optional[str] = Field(default=None)
-    cn_afternoon_end: Optional[str] = Field(default=None)
-    hk_morning_start: Optional[str] = Field(default=None)
-    hk_morning_end: Optional[str] = Field(default=None)
-    hk_afternoon_start: Optional[str] = Field(default=None)
-    hk_afternoon_end: Optional[str] = Field(default=None)
-    us_pre_market_start: Optional[str] = Field(default=None)
-    us_pre_market_end: Optional[str] = Field(default=None)
-    us_regular_start: Optional[str] = Field(default=None)
-    us_regular_end: Optional[str] = Field(default=None)
+    cn_morning_start: str | None = Field(default=None)
+    cn_morning_end: str | None = Field(default=None)
+    cn_afternoon_start: str | None = Field(default=None)
+    cn_afternoon_end: str | None = Field(default=None)
+    hk_morning_start: str | None = Field(default=None)
+    hk_morning_end: str | None = Field(default=None)
+    hk_afternoon_start: str | None = Field(default=None)
+    hk_afternoon_end: str | None = Field(default=None)
+    us_pre_market_start: str | None = Field(default=None)
+    us_pre_market_end: str | None = Field(default=None)
+    us_regular_start: str | None = Field(default=None)
+    us_regular_end: str | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_TRADING_HOURS_",
@@ -83,18 +85,18 @@ class TradingHoursSettings(BaseSettings):
 class CacheSettings(BaseSettings):
     """缓存配置 - 所有默认值来自 config.toml"""
 
-    default_ttl: Optional[int] = Field(default=None)
-    search_ttl: Optional[int] = Field(default=None)
-    stock_trading_ttl: Optional[int] = Field(default=None)
-    stock_non_trading_ttl: Optional[int] = Field(default=None)
-    fund_trading_ttl: Optional[int] = Field(default=None)
-    fund_non_trading_ttl: Optional[int] = Field(default=None)
-    forex_ttl: Optional[int] = Field(default=None)
-    gold_ttl: Optional[int] = Field(default=None)
-    quote_short_ttl: Optional[int] = Field(default=None)
-    quote_medium_ttl: Optional[int] = Field(default=None)
-    quote_long_ttl: Optional[int] = Field(default=None)
-    quote_history_days: Optional[int] = Field(default=None)
+    default_ttl: int | None = Field(default=None)
+    search_ttl: int | None = Field(default=None)
+    stock_trading_ttl: int | None = Field(default=None)
+    stock_non_trading_ttl: int | None = Field(default=None)
+    fund_trading_ttl: int | None = Field(default=None)
+    fund_non_trading_ttl: int | None = Field(default=None)
+    forex_ttl: int | None = Field(default=None)
+    gold_ttl: int | None = Field(default=None)
+    quote_short_ttl: int | None = Field(default=None)
+    quote_medium_ttl: int | None = Field(default=None)
+    quote_long_ttl: int | None = Field(default=None)
+    quote_history_days: int | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_CACHE_",
@@ -107,11 +109,11 @@ class CacheSettings(BaseSettings):
 class HttpSettings(BaseSettings):
     """HTTP 配置 - 所有默认值来自 config.toml"""
 
-    total_timeout: Optional[int] = Field(default=None)
-    connect_timeout: Optional[int] = Field(default=None)
-    max_retries: Optional[int] = Field(default=None)
-    retry_delay: Optional[float] = Field(default=None)
-    max_concurrent: Optional[int] = Field(default=None)
+    total_timeout: int | None = Field(default=None)
+    connect_timeout: int | None = Field(default=None)
+    max_retries: int | None = Field(default=None)
+    retry_delay: float | None = Field(default=None)
+    max_concurrent: int | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_HTTP_",
@@ -124,9 +126,9 @@ class HttpSettings(BaseSettings):
 class DisplaySettings(BaseSettings):
     """展示层配置 - 所有默认值来自 config.toml"""
 
-    market_map: Optional[dict] = Field(default=None)
-    type_map: Optional[dict] = Field(default=None)
-    type_color: Optional[dict] = Field(default=None)
+    market_map: dict | None = Field(default=None)
+    type_map: dict | None = Field(default=None)
+    type_color: dict | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_DISPLAY_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
@@ -136,9 +138,9 @@ class DisplaySettings(BaseSettings):
 class ProxySettings(BaseSettings):
     """代理配置 - 所有默认值来自 config.toml"""
 
-    http: Optional[str] = Field(default=None)
-    https: Optional[str] = Field(default=None)
-    enabled: Optional[bool] = Field(default=None)
+    http: str | None = Field(default=None)
+    https: str | None = Field(default=None)
+    enabled: bool | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_PROXY_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
@@ -148,9 +150,9 @@ class ProxySettings(BaseSettings):
 class ApiKeySettings(BaseSettings):
     """API密钥配置 - 所有默认值来自 config.toml"""
 
-    fred: Optional[str] = Field(default=None)
-    imf_primary: Optional[str] = Field(default=None)
-    imf_secondary: Optional[str] = Field(default=None)
+    fred: str | None = Field(default=None)
+    imf_primary: str | None = Field(default=None)
+    imf_secondary: str | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_API_",
@@ -163,8 +165,8 @@ class ApiKeySettings(BaseSettings):
 class GoldSettings(BaseSettings):
     """黄金相关配置 - 所有默认值来自 config.toml"""
 
-    price_usd_per_ounce: Optional[float] = Field(default=None)
-    wan_oz_to_tonne: Optional[float] = Field(default=None)
+    price_usd_per_ounce: float | None = Field(default=None)
+    wan_oz_to_tonne: float | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_GOLD_",
@@ -299,14 +301,14 @@ class ForexDataSource(BaseSettings):
         extra="ignore",
     )
 
-    def get_latest_url(self, base: str, symbols: Optional[List[str]] = None) -> str:
+    def get_latest_url(self, base: str, symbols: list[str] | None = None) -> str:
         """获取最新汇率URL"""
         url = f"{self.frankfurter_base_url}/latest?from={base}"
         if symbols:
             url += f"&to={','.join(symbols)}"
         return url
 
-    def get_historical_url(self, date: str, base: str, symbols: Optional[List[str]] = None) -> str:
+    def get_historical_url(self, date: str, base: str, symbols: list[str] | None = None) -> str:
         """获取历史汇率URL"""
         url = f"{self.frankfurter_base_url}/{date}?from={base}"
         if symbols:
@@ -365,24 +367,24 @@ class DataSourceConfig(BaseSettings):
     gpr: GPRDataSource = Field(default_factory=GPRDataSource)
 
     # 数据源优先级
-    quote_priority: List[str] = Field(default=["eastmoney", "sina", "yahoo"], description="行情数据源优先级")
-    forex_priority: List[str] = Field(default=["frankfurter", "exchangerate"], description="汇率数据源优先级")
-    gold_priority: List[str] = Field(default=["fred", "imf"], description="黄金数据源优先级")
+    quote_priority: list[str] = Field(default=["eastmoney", "sina", "yahoo"], description="行情数据源优先级")
+    forex_priority: list[str] = Field(default=["frankfurter", "exchangerate"], description="汇率数据源优先级")
+    gold_priority: list[str] = Field(default=["fred", "imf"], description="黄金数据源优先级")
 
     # 降级策略
     fallback_enabled: bool = Field(default=True, description="是否启用数据源降级")
 
     # 兼容字段 - 直接访问 URL (TOML [datasource] section)
-    sina_base_url: Optional[str] = Field(default=None)
-    sina_cn_quote: Optional[str] = Field(default=None)
-    eastmoney_quote_api: Optional[str] = Field(default=None)
-    eastmoney_batch_api: Optional[str] = Field(default=None)
-    fund_gz_api: Optional[str] = Field(default=None)
-    frankfurter_base: Optional[str] = Field(default=None)
-    exchangerate_base: Optional[str] = Field(default=None)
-    fred_base_url: Optional[str] = Field(default=None)
-    imf_base_url: Optional[str] = Field(default=None)
-    gpr_data_url: Optional[str] = Field(default=None)
+    sina_base_url: str | None = Field(default=None)
+    sina_cn_quote: str | None = Field(default=None)
+    eastmoney_quote_api: str | None = Field(default=None)
+    eastmoney_batch_api: str | None = Field(default=None)
+    fund_gz_api: str | None = Field(default=None)
+    frankfurter_base: str | None = Field(default=None)
+    exchangerate_base: str | None = Field(default=None)
+    fred_base_url: str | None = Field(default=None)
+    imf_base_url: str | None = Field(default=None)
+    gpr_data_url: str | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_prefix="FCLI_DATASOURCE_",
@@ -397,7 +399,7 @@ class DataSourceConfig(BaseSettings):
 # ============================================================
 
 
-def _load_toml_config() -> Dict[str, Any]:
+def _load_toml_config() -> dict[str, Any]:
     """加载项目目录下的 config.toml
 
     Returns:
@@ -415,11 +417,11 @@ def _load_toml_config() -> Dict[str, Any]:
     except Exception as e:
         import warnings
 
-        warnings.warn(f"Failed to load config from {PROJECT_CONFIG_PATH}: {e}")
+        warnings.warn(f"Failed to load config from {PROJECT_CONFIG_PATH}: {e}", stacklevel=2)
         return {}
 
 
-def _merge_toml_to_settings(toml_config: Dict[str, Any], settings: "Settings") -> None:
+def _merge_toml_to_settings(toml_config: dict[str, Any], settings: Settings) -> None:
     """将 TOML 配置合并到 Settings 实例
 
     优先级: 环境变量 > TOML 配置 > 默认值
@@ -491,7 +493,7 @@ class SymbolRegistry:
     def __init__(self, datasource: DataSourceConfig):
         self.datasource = datasource
 
-    def resolve_api_code(self, code: str, market: "Market") -> str:
+    def resolve_api_code(self, code: str, market: Market) -> str:
         """根据市场和代码解析 API 代码
 
         Args:
@@ -516,7 +518,7 @@ class SymbolRegistry:
         else:
             raise ValueError(f"Unsupported market: {market}")
 
-    def infer_market(self, code: str) -> "Market":
+    def infer_market(self, code: str) -> Market:
         """从代码推断市场类型
 
         Args:
@@ -538,6 +540,32 @@ class SymbolRegistry:
             return Market.US
         # 默认美股
         return Market.US
+
+    def infer_type(self, code: str) -> AssetType:
+        """从代码推断资产类型
+
+        Args:
+            code: 证券代码
+
+        Returns:
+            推断的资产类型
+        """
+        from .models.base import AssetType
+
+        # 基金代码特征: 6位数字且以特定前缀开头
+        if code.isdigit() and len(code) == 6:
+            prefix2 = code[:2]
+            prefix3 = code[:3]
+
+            # ETF/LOF 常见前缀
+            # 11xxxx, 15xxxx, 16xxxx, 50xxxx, 51xxxx, 52xxxx, 159xxx
+            fund_prefixes_2 = {"11", "15", "16", "50", "51", "52"}
+            fund_prefixes_3 = {"159"}
+
+            if prefix2 in fund_prefixes_2 or prefix3 in fund_prefixes_3:
+                return AssetType.FUND
+
+        return AssetType.STOCK
 
 
 # ============================================================

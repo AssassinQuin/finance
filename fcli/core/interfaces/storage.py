@@ -4,7 +4,7 @@ Defines the contract for storage implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Protocol, TYPE_CHECKING, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 # Forward references to avoid circular imports
 # These are just type hints - actual imports happen at runtime in implementations
@@ -19,7 +19,7 @@ class IStorage(Protocol):
     Provides watchlist asset persistence.
     """
 
-    async def load(self) -> "List[Asset]":
+    async def load(self) -> "list[Asset]":
         """Load all active assets from storage.
 
         Returns:
@@ -27,7 +27,7 @@ class IStorage(Protocol):
         """
         ...
 
-    async def save(self, assets: "List[Asset]") -> None:
+    async def save(self, assets: "list[Asset]") -> None:
         """Save assets to storage.
 
         Args:
@@ -57,7 +57,7 @@ class IStorage(Protocol):
         """
         ...
 
-    async def get(self, code: str) -> "Optional[Asset]":
+    async def get(self, code: str) -> "Asset | None":
         """Get asset by code.
 
         Args:
@@ -73,12 +73,12 @@ class StorageABC(ABC):
     """Abstract base class for storage implementations."""
 
     @abstractmethod
-    async def load(self) -> "List[Asset]":
+    async def load(self) -> "list[Asset]":
         """Load all active assets from storage."""
         pass
 
     @abstractmethod
-    async def save(self, assets: "List[Asset]") -> None:
+    async def save(self, assets: "list[Asset]") -> None:
         """Save assets to storage."""
         pass
 
@@ -93,6 +93,6 @@ class StorageABC(ABC):
         pass
 
     @abstractmethod
-    async def get(self, code: str) -> "Optional[Asset]":
+    async def get(self, code: str) -> "Asset | None":
         """Get asset by code."""
         pass

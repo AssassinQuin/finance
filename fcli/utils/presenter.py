@@ -1,13 +1,11 @@
-from typing import List
-
+import plotext as plt
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-import plotext as plt
 
-from ..core.models import Asset, Quote, ExchangeRate
 from ..core.config import config
+from ..core.models import Asset, ExchangeRate, Quote
 
 console = Console()
 
@@ -19,7 +17,7 @@ TYPE_COLOR = config.display.type_color
 
 class ConsolePresenter:
     @staticmethod
-    def print_asset_table(assets: List[Asset]):
+    def print_asset_table(assets: list[Asset]):
         table = Table(box=box.SIMPLE, header_style="bold cyan")
         table.add_column("代码", justify="left", style="green")
         table.add_column("名称", justify="left")
@@ -40,7 +38,7 @@ class ConsolePresenter:
         console.print(table)
 
     @staticmethod
-    def print_quote_table(quotes: List[Quote]):
+    def print_quote_table(quotes: list[Quote]):
         table = Table(box=box.SIMPLE, header_style="bold cyan")
         table.add_column("#", justify="center", style="dim", width=2)
         table.add_column("代码", justify="left", style="green")
@@ -80,7 +78,7 @@ class ConsolePresenter:
         console.print(table)
 
     @staticmethod
-    def print_search_table(assets: List[Asset]):
+    def print_search_table(assets: list[Asset]):
         table = Table(box=box.SIMPLE, header_style="bold cyan", title="搜索结果")
         table.add_column("代码", justify="left", style="green")
         table.add_column("名称", justify="left")
@@ -158,7 +156,7 @@ class ConsolePresenter:
         reserves_table.add_column("6月变化", justify="right", width=10)
         reserves_table.add_column("12月变化", justify="right", width=10)
         reserves_table.add_column("数据日期", justify="center", style="dim", width=8)
-        
+
         def format_change(val):
             """Format change value with color."""
             if val is None or val == 0:
@@ -166,7 +164,7 @@ class ConsolePresenter:
             if val > 0:
                 return f"[bold red]+{val:.1f}[/bold red]"
             return f"[bold green]{val:.1f}[/bold green]"
-        
+
         # Add rows to the reserves table
         reserves = data.get("reserves", [])
         for i, r in enumerate(reserves, 1):
@@ -233,7 +231,7 @@ class ConsolePresenter:
             console.print(f"\n[dim]最后更新时间: {data['last_update']}[/dim]")
 
     @staticmethod
-    def print_gold_history(country_name: str, history: List[dict]):
+    def print_gold_history(country_name: str, history: list[dict]):
         if not history:
             ConsolePresenter.print_error(f"未找到 {country_name} 的历史数据。")
             return
@@ -266,7 +264,7 @@ class ConsolePresenter:
         console.print(table)
 
     @staticmethod
-    def print_gpr_chart(history: List[dict]):
+    def print_gpr_chart(history: list[dict]):
         if not history:
             return
 
@@ -313,7 +311,7 @@ class ConsolePresenter:
         )
 
     @staticmethod
-    def print_exchange_rates(rates: List[ExchangeRate], base: str):
+    def print_exchange_rates(rates: list[ExchangeRate], base: str):
         table = Table(
             box=box.SIMPLE,
             header_style="bold cyan",
@@ -322,10 +320,11 @@ class ConsolePresenter:
         table.add_column("货币对", justify="left", style="green")
         table.add_column("汇率", justify="right", style="bold")
 
-        table.add_row(
-            f"{rate.base_currency}/{rate.quote_currency}",
-            f"{rate.rate:.4f}",
-        )
+        for rate in rates:
+            table.add_row(
+                f"{rate.base_currency}/{rate.quote_currency}",
+                f"{rate.rate:.4f}",
+            )
         console.print(table)
 
     @staticmethod
@@ -457,7 +456,7 @@ class ConsolePresenter:
         )
 
         # === 组合显示 ===
-        right_content = Columns([spdr_panel, balance_panel])
+        Columns([spdr_panel, balance_panel])
 
         from rich.console import Group
 

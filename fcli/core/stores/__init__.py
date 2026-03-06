@@ -1,11 +1,11 @@
 """Stores package - database operations layer."""
 
 from .base import BaseStore
-from .gold import GoldReserveStore, CentralBankScheduleStore
+from .exchange_rate import ExchangeRateStore
+from .gold import GoldReserveStore
 from .gold_supply_demand import GoldSupplyDemandStore
 from .gpr import GPRHistoryStore
 from .quote import QuoteStore
-from .exchange_rate import ExchangeRateStore
 from .watchlist import WatchlistAssetStore
 
 __all__ = [

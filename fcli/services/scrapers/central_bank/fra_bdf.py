@@ -3,16 +3,13 @@ Banque de France scraper for French gold reserves.
 Scrapes French central bank gold holdings from their website.
 """
 
-import asyncio
-import time
-import re
-from datetime import datetime, date
-from typing import List, Optional
 import logging
+import re
+from datetime import date, datetime
 
-from ..base import BaseScraper, ScraperResult
 from ....core.models import GoldReserve
 from ....infra.http_client import http_client
+from ..base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +29,7 @@ class BanqueDeFranceScraper(BaseScraper):
     def source_name(self) -> str:
         return self._source_name
 
-    async def fetch(self) -> Optional[str]:
+    async def fetch(self) -> str | None:
         """
         Fetch French gold reserve data from Banque de France website.
 
@@ -50,7 +47,7 @@ class BanqueDeFranceScraper(BaseScraper):
             logger.error(f"Banque de France fetch failed: {e}")
             return None
 
-    def parse(self, raw_data: Optional[str]) -> List[GoldReserve]:
+    def parse(self, raw_data: str | None) -> list[GoldReserve]:
         """
         Parse Banque de France HTML response into GoldReserve objects.
 

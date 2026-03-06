@@ -1,11 +1,11 @@
 """Quote store - PostgreSQL implementation."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from ..database import Database
 from ..models.asset import Quote
-from ..models.base import Market, AssetType
+from ..models.base import AssetType, Market
 from .base import BaseStore
 
 
@@ -86,7 +86,7 @@ class QuoteStore(BaseStore[Quote]):
         return [cls._row_to_model(row) for row in rows]
 
     @classmethod
-    async def get_latest(cls, code: str) -> Optional[Quote]:
+    async def get_latest(cls, code: str) -> Quote | None:
         """Get latest quote for a code."""
         if not Database.is_enabled():
             return None

@@ -8,9 +8,9 @@ import logging
 import sys
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # 默认日志格式
 DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -21,13 +21,13 @@ class LogContext:
     """日志上下文"""
 
     operation: str
-    market: Optional[str] = None
-    code: Optional[str] = None
-    source: Optional[str] = None
-    cache_hit: Optional[bool] = None
-    duration_ms: Optional[float] = None
-    error: Optional[str] = None
-    extra: Optional[dict[str, Any]] = None
+    market: str | None = None
+    code: str | None = None
+    source: str | None = None
+    cache_hit: bool | None = None
+    duration_ms: float | None = None
+    error: str | None = None
+    extra: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {"operation": self.operation, "timestamp": datetime.now().isoformat()}
@@ -77,7 +77,7 @@ class StructuredLogger:
             handler.setFormatter(StructuredFormatter(DEFAULT_FORMAT))
             self.logger.addHandler(handler)
 
-    def _log(self, level: int, message: str, context: Optional[LogContext] = None, **kwargs):
+    def _log(self, level: int, message: str, context: LogContext | None = None, **kwargs):
         """内部日志方法 - 只输出 ERROR 及以上级别"""
         if level < logging.ERROR:
             return
@@ -87,16 +87,16 @@ class StructuredLogger:
         extra = {"context": context} if context else {}
         self.logger.log(level, message, extra=extra, **kwargs)
 
-    def info(self, message: str, context: Optional[LogContext] = None):
+    def info(self, message: str, context: LogContext | None = None):
         self._log(logging.INFO, message, context)
 
-    def warning(self, message: str, context: Optional[LogContext] = None):
+    def warning(self, message: str, context: LogContext | None = None):
         self._log(logging.WARNING, message, context)
 
-    def error(self, message: str, context: Optional[LogContext] = None):
+    def error(self, message: str, context: LogContext | None = None):
         self._log(logging.ERROR, message, context)
 
-    def debug(self, message: str, context: Optional[LogContext] = None):
+    def debug(self, message: str, context: LogContext | None = None):
         self._log(logging.DEBUG, message, context)
 
     @contextmanager

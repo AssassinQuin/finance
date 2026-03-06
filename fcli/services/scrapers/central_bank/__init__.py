@@ -4,19 +4,18 @@ Provides direct scraping from central bank websites.
 """
 
 import logging
-from typing import Dict, Type
 
 from ..base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
 # Import all central bank scrapers
-from .usa_fred import FREDSscraper
 from .fra_bdf import BanqueDeFranceScraper
 from .jpn_boj import BOJScraper
+from .usa_fred import FREDSscraper
 
 # Registry of available central bank scrapers
-CENTRAL_BANK_SCRAPERS: Dict[str, Type[BaseScraper]] = {
+CENTRAL_BANK_SCRAPERS: dict[str, type[BaseScraper]] = {
     "USA": FREDSscraper,
     "FRA": BanqueDeFranceScraper,
     "JPN": BOJScraper,

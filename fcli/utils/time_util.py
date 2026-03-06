@@ -1,9 +1,8 @@
 ﻿import re
 from datetime import datetime, time
-from typing import Optional
 
-from fcli.core.models.base import Market
 from fcli.core.config import config
+from fcli.core.models.base import Market
 
 
 def normalize_time(time_str: str) -> str:
@@ -42,7 +41,7 @@ def _parse_time(time_str: str) -> time:
     return time(int(parts[0]), int(parts[1]))
 
 
-def is_trading_hours(market: Market, check_time: Optional[datetime] = None) -> bool:
+def is_trading_hours(market: Market, check_time: datetime | None = None) -> bool:
     if check_time is None:
         check_time = datetime.now()
 
@@ -82,7 +81,7 @@ def is_trading_hours(market: Market, check_time: Optional[datetime] = None) -> b
     return False
 
 
-def get_cache_ttl(market: Market, check_time: Optional[datetime] = None) -> int:
+def get_cache_ttl(market: Market, check_time: datetime | None = None) -> int:
     if is_trading_hours(market, check_time):
         return config.cache.quote_ttl_trading
     return config.cache.quote_ttl

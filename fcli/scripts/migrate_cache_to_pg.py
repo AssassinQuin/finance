@@ -48,7 +48,7 @@ async def migrate_cache():
 
     # Read cache data
     print("Reading cache.json...")
-    with open(CACHE_FILE, "r", encoding="utf-8") as f:
+    with open(CACHE_FILE, encoding="utf-8") as f:
         cache_data = json.load(f)
 
     print(f"Found {len(cache_data)} cache entries")

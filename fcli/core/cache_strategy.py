@@ -8,17 +8,17 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional, Protocol
+from typing import Protocol
 
 from .config import config
-from .models.base import Market, AssetType
+from .models.base import AssetType, Market
 
 
 class ICacheStrategy(Protocol):
     """缓存策略协议"""
 
     def get_ttl(
-        self, asset_type: AssetType, market: Optional[Market] = None, check_time: Optional[datetime] = None
+        self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None
     ) -> int:
         """获取缓存TTL（秒）
 
@@ -38,7 +38,7 @@ class CacheStrategyBase(ABC):
 
     @abstractmethod
     def get_ttl(
-        self, asset_type: AssetType, market: Optional[Market] = None, check_time: Optional[datetime] = None
+        self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None
     ) -> int:
         """获取缓存TTL（秒）"""
         pass
@@ -128,7 +128,7 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
         self._gold_ttl = gold_ttl
 
     def get_ttl(
-        self, asset_type: AssetType, market: Optional[Market] = None, check_time: Optional[datetime] = None
+        self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None
     ) -> int:
         """获取缓存TTL
 

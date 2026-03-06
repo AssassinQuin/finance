@@ -1,20 +1,60 @@
-from typing import List, Optional, Dict, Any
-from datetime import datetime
-import re
+"""Quote Service - 行情查询服务
+
+重构说明:
+- 使用依赖注入模式，通过构造函数传入依赖
+- 移除全局实例导入，提高可测试性
+- 通过 sources 注入数据源，实现策略模式
+"""
+
 import json
-from ..utils.logger import quote_logger as logger, LogContext
+import re
+from datetime import datetime
+from typing import Any
+
+from ..core.cache_strategy import ICacheStrategy
+from ..core.config import Settings
+from ..core.interfaces.cache import ICache
+from ..core.interfaces.source import IQuoteSource
+from ..core.models import Asset, AssetType, Market, Quote
+from ..infra.http_client import HttpClient
+from ..utils.logger import LogContext
+from ..utils.logger import quote_logger as logger
 from ..utils.time_util import is_trading_hours
-from ..core.cache import cache
-from ..core.config import config
-from ..core.models import Asset, Quote, Market, AssetType
-from ..infra.http_client import http_client
-from ..core.cache_strategy import default_cache_strategy
 
 
 class QuoteService:
-    async def fetch_single(self, asset: Asset) -> Optional[Quote]:
+    """行情查询服务
+
+    通过依赖注入接收 cache, config, http_client 等基础设施，
+    以及数据源列表 sources，实现解耦和策略模式。
+
+    Args:
+        cache: 缓存实例 (ICache)
+        config: 配置实例 (Settings)
+        http_client: HTTP 客户端实例 (HttpClient)
+        cache_strategy: 缓存策略实例 (ICacheStrategy)
+        sources: 数据源列表 (List[IQuoteSource])
+    """
+
+    def __init__(
+        self,
+        cache: ICache,
+        config: Settings,
+        http_client: HttpClient,
+        cache_strategy: ICacheStrategy,
+        sources: list[IQuoteSource] | None = None,
+        fund_source: IQuoteSource | None = None,
+    ):
+        self._cache = cache
+        self._config = config
+        self._http_client = http_client
+        self._cache_strategy = cache_strategy
+        self._sources = sources or []
+        self._fund_source = fund_source
+
+    async def fetch_single(self, asset: Asset) -> Quote | None:
         cache_key = f"quote:{asset.code}"
-        cached = await cache.async_get(cache_key)
+        cached = await self._cache.async_get(cache_key)
 
         if cached:
             in_trading = is_trading_hours(asset.market)
@@ -23,15 +63,14 @@ class QuoteService:
                     "Cache hit (trading hours)",
                     LogContext(operation="cache_lookup", code=asset.code, market=asset.market.value, cache_hit=True),
                 )
-                return Quote(**cached)
             else:
                 logger.debug(
                     "Cache hit (non-trading hours)",
                     LogContext(operation="cache_lookup", code=asset.code, market=asset.market.value, cache_hit=True),
                 )
-                return Quote(**cached)
+            return Quote(**cached)
 
-        for source in config.datasource.quote_priority:
+        for source in self._config.datasource.quote_priority:
             try:
                 if source == "sina":
                     quote = await self._fetch_sina(asset)
@@ -44,8 +83,8 @@ class QuoteService:
 
                 if quote:
                     # 使用基于资产类型的缓存策略
-                    ttl = default_cache_strategy.get_ttl(asset.type, asset.market)
-                    await cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
+                    ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
+                    await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
                     logger.info(
                         "Quote fetched",
                         LogContext(
@@ -59,7 +98,7 @@ class QuoteService:
                     return quote
             except Exception as e:
                 logger.warning(f"Source {source} failed: {e}")
-                if not config.datasource.fallback_enabled:
+                if not self._config.datasource.fallback_enabled:
                     raise
                 continue
 
@@ -82,7 +121,7 @@ class QuoteService:
             "volume": quote.volume,
         }
 
-    async def _fetch_sina(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_sina(self, asset: Asset) -> Quote | None:
         if asset.type == AssetType.FUND:
             return await self._fetch_fund_1234567(asset)
         elif asset.market == Market.CN:
@@ -95,10 +134,10 @@ class QuoteService:
             return await self._fetch_sina_global(asset)
         return None
 
-    async def _fetch_fund_1234567(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_fund_1234567(self, asset: Asset) -> Quote | None:
         # 使用配置化的URL
-        url = config.datasource.fund_gz_api.format(code=asset.api_code)
-        text = await http_client.fetch(url, text_mode=True)
+        url = self._config.datasource.fund_gz_api.format(code=asset.api_code)
+        text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "jsonpgz" not in text:
             return None
@@ -135,7 +174,7 @@ class QuoteService:
             type=asset.type,
         )
 
-    def _parse_fund_response(self, json_str: str) -> Dict[str, Any]:
+    def _parse_fund_response(self, json_str: str) -> dict[str, Any]:
         """
         解析 fundgz.1234567.com.cn 返回的非标准 JSON 格式。
         该 API 返回的格式类似于: {fundcode:"000001",name:"华夏成长",gsz:"1.234",...}
@@ -156,11 +195,11 @@ class QuoteService:
                 result[key] = match.group(1)
         return result
 
-    async def _fetch_sina_cn(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_sina_cn(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = config.datasource.sina_cn_quote.format(code=code)
-        text = await http_client.fetch(url, text_mode=True)
+        url = self._config.datasource.sina_cn_quote.format(code=code)
+        text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
             return None
@@ -192,11 +231,11 @@ class QuoteService:
             volume=parts[8] if parts[8] else None,
         )
 
-    async def _fetch_sina_hk(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_sina_hk(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = config.datasource.sina_cn_quote.format(code=code)
-        text = await http_client.fetch(url, text_mode=True)
+        url = self._config.datasource.sina_cn_quote.format(code=code)
+        text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
             return None
@@ -228,11 +267,11 @@ class QuoteService:
             volume=parts[12] if parts[12] else None,
         )
 
-    async def _fetch_sina_us(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_sina_us(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = config.datasource.sina_cn_quote.format(code=code)
-        text = await http_client.fetch(url, text_mode=True)
+        url = self._config.datasource.sina_cn_quote.format(code=code)
+        text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
             return None
@@ -264,11 +303,11 @@ class QuoteService:
             volume=parts[10] if parts[10] else None,
         )
 
-    async def _fetch_sina_global(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_sina_global(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = config.datasource.sina_cn_quote.format(code=code)
-        text = await http_client.fetch(url, text_mode=True)
+        url = self._config.datasource.sina_cn_quote.format(code=code)
+        text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
             return None
@@ -297,7 +336,7 @@ class QuoteService:
             type=asset.type,
         )
 
-    async def _fetch_eastmoney(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_eastmoney(self, asset: Asset) -> Quote | None:
         secid_map = {
             Market.CN: f"1.{asset.api_code[2:]}"
             if asset.api_code.startswith(("sh", "SH"))
@@ -311,16 +350,15 @@ class QuoteService:
         if not secid:
             return None
 
-        url = config.datasource.eastmoney_quote_api
+        url = self._config.datasource.eastmoney_quote_api
         params = {
             "secid": secid,
             "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f162,f163,f166,f169,f170,f171,f184",
         }
 
-        data = await http_client.fetch(url, params=params)
+        data = await self._http_client.fetch(url, params=params)
 
         if not data or not isinstance(data, dict) or data.get("rc") != 0 or not data.get("data"):
-            return None
             return None
 
         d = data["data"]
@@ -345,10 +383,10 @@ class QuoteService:
             volume=str(int(d.get("f47", 0))) if d.get("f47") and d.get("f47") != "-" else None,
         )
 
-    async def _fetch_yahoo(self, asset: Asset) -> Optional[Quote]:
+    async def _fetch_yahoo(self, asset: Asset) -> Quote | None:
         return None
 
-    async def fetch_all(self, assets: List[Asset]) -> List[Quote]:
+    async def fetch_all(self, assets: list[Asset]) -> list[Quote]:
         """批量获取行情数据，使用批量API优化性能"""
         import asyncio
 
@@ -357,7 +395,7 @@ class QuoteService:
 
         for asset in assets:
             cache_key = f"quote:{asset.code}"
-            cached = await cache.async_get(cache_key)
+            cached = await self._cache.async_get(cache_key)
             if cached:
                 in_trading = is_trading_hours(asset.market)
                 if in_trading:
@@ -381,11 +419,12 @@ class QuoteService:
             Market.HK: [],
             Market.US: [],
         }
+        fund_assets = []
         other_assets = []
 
         for asset in remaining_assets:
             if asset.type == AssetType.FUND:
-                other_assets.append(asset)  # 基金走单独逻辑
+                fund_assets.append(asset)
             elif asset.market in market_groups:
                 market_groups[asset.market].append(asset)
             else:
@@ -394,7 +433,6 @@ class QuoteService:
         # 并行获取各市场数据
         tasks = []
 
-        # 全球指数 - 东方财富批量 API
         if market_groups[Market.GLOBAL]:
             secids = [
                 f"100.{asset.api_code.split('.')[1] if '.' in asset.api_code else asset.api_code}"
@@ -402,19 +440,13 @@ class QuoteService:
             ]
             tasks.append(self._fetch_global_batch(market_groups[Market.GLOBAL], secids))
 
-        # A股 - 新浪批量 API
-        if market_groups[Market.CN]:
-            tasks.append(self._fetch_sina_batch(market_groups[Market.CN], Market.CN))
+        stock_assets = market_groups[Market.CN] + market_groups[Market.HK] + market_groups[Market.US]
+        if stock_assets and self._sources:
+            tasks.append(self._fetch_from_sources(stock_assets))
 
-        # 港股 - 新浪批量 API
-        if market_groups[Market.HK]:
-            tasks.append(self._fetch_sina_batch(market_groups[Market.HK], Market.HK))
+        if fund_assets and self._fund_source:
+            tasks.append(self._fetch_fund_from_source(fund_assets))
 
-        # 美股 - 新浪批量 API
-        if market_groups[Market.US]:
-            tasks.append(self._fetch_sina_batch(market_groups[Market.US], Market.US))
-
-        # 其他资产 - 单条并发
         if other_assets:
             tasks.append(self._fetch_others_batch(other_assets))
 
@@ -429,127 +461,42 @@ class QuoteService:
 
         return quotes
 
-    async def _fetch_sina_batch(self, assets: List[Asset], market: Market) -> List[Quote]:
-        """批量获取新浪行情数据 (支持 A股/港股/美股)"""
-        if not assets:
+    async def _fetch_from_sources(self, assets: list[Asset]) -> list[Quote]:
+        quotes = []
+        for source in self._sources:
+            try:
+                fetched = await source.fetch_all(assets)
+                if fetched:
+                    quotes.extend(fetched)
+                    for quote in fetched:
+                        asset = next((a for a in assets if a.code == quote.code), None)
+                        if asset:
+                            ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
+                            cache_key = f"quote:{quote.code}"
+                            await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
+                    break
+            except Exception as e:
+                logger.warning(f"Source {source.name} failed: {e}")
+                continue
+        return quotes
+
+    async def _fetch_fund_from_source(self, assets: list[Asset]) -> list[Quote]:
+        if not self._fund_source:
             return []
-
-        # 构建批量请求 URL - 使用配置化的URL
-        codes = [asset.api_code for asset in assets]
-        url = f"{config.datasource.sina_base_url}/list={','.join(codes)}"
-
         try:
-            text = await http_client.fetch(url, text_mode=True)
-            if not text:
-                return []
-
-            # 解析返回数据
-            quotes = []
-            asset_map = {asset.api_code: asset for asset in assets}
-
-            # 新浪返回格式: var hq_str_sh600519="...";
-            for line in text.strip().split("\n"):
-                if "=" not in line:
-                    continue
-
-                # 提取代码和数据
-                code_part, data_part = line.split("=", 1)
-                api_code = code_part.split("_")[-1]
-
-                if api_code not in asset_map:
-                    continue
-
-                asset = asset_map[api_code]
-                data_str = data_part.strip('";\n')
-
-                if not data_str:
-                    continue
-
-                # 根据市场类型解析
-                quote = self._parse_sina_data(asset, data_str, market)
-                if quote:
-                    quotes.append(quote)
-                    # 使用基于资产类型的缓存策略
-                    ttl = default_cache_strategy.get_ttl(asset.type, asset.market)
-                    cache_key = f"quote:{asset.code}"
-                    await cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
-
-            return quotes
-
+            fetched = await self._fund_source.fetch_all(assets)
+            for quote in fetched:
+                asset = next((a for a in assets if a.code == quote.code), None)
+                if asset:
+                    ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
+                    cache_key = f"quote:{quote.code}"
+                    await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
+            return fetched
         except Exception as e:
-            logger.error(f"Sina batch fetch failed for {market}: {e}")
+            logger.warning(f"Fund source failed: {e}")
             return []
 
-    def _parse_sina_data(self, asset: Asset, data_str: str, market: Market) -> Optional[Quote]:
-        """统一解析新浪返回数据"""
-        parts = data_str.split(",")
-
-        if market == Market.CN:
-            # A股格式: 名称,今开,昨收,当前,最高,最低,...
-            if len(parts) < 32:
-                return None
-            return Quote(
-                code=asset.code,
-                name=parts[0] or asset.name,
-                price=float(parts[3]) if parts[3] else 0.0,
-                change_percent=self._calc_change_percent(
-                    float(parts[3]) if parts[3] else 0, float(parts[2]) if parts[2] else 0
-                ),
-                update_time=datetime.now(),
-                market=asset.market,
-                type=asset.type,
-                high=float(parts[4]) if parts[4] else None,
-                low=float(parts[5]) if parts[5] else None,
-                volume=parts[8] if parts[8] else None,
-            )
-
-        elif market == Market.HK:
-            # 港股格式: ,名称,英文名,昨收,今开,最高,当前,...
-            if len(parts) < 15:
-                return None
-            return Quote(
-                code=asset.code,
-                name=parts[1] or asset.name,
-                price=float(parts[6]) if parts[6] else 0.0,
-                change_percent=self._calc_change_percent(
-                    float(parts[6]) if parts[6] else 0, float(parts[3]) if parts[3] else 0
-                ),
-                update_time=datetime.now(),
-                market=asset.market,
-                type=asset.type,
-                high=float(parts[4]) if parts[4] else None,
-                low=float(parts[5]) if parts[5] else None,
-                volume=parts[12] if parts[12] else None,
-            )
-
-        elif market == Market.US:
-            # 美股格式: 名称,当前,涨跌,涨跌幅,...
-            if len(parts) < 15:
-                return None
-            return Quote(
-                code=asset.code,
-                name=parts[0] or asset.name,
-                price=float(parts[1]) if parts[1] else 0.0,
-                change_percent=self._calc_change_percent(
-                    float(parts[1]) if parts[1] else 0, float(parts[26]) if parts[26] else 0
-                ),
-                update_time=datetime.now(),
-                market=asset.market,
-                type=asset.type,
-                high=float(parts[4]) if parts[4] else None,
-                low=float(parts[5]) if parts[5] else None,
-                volume=parts[10] if parts[10] else None,
-            )
-
-        return None
-
-    def _calc_change_percent(self, price: float, prev_close: float) -> float:
-        """计算涨跌幅"""
-        if prev_close > 0:
-            return (price - prev_close) / prev_close * 100
-        return 0.0
-
-    async def _fetch_others_batch(self, assets: List[Asset]) -> List[Quote]:
+    async def _fetch_others_batch(self, assets: list[Asset]) -> list[Quote]:
         """获取其他类型资产 (单条并发)"""
         import asyncio
 
@@ -557,12 +504,12 @@ class QuoteService:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return [r for r in results if isinstance(r, Quote)]
 
-    async def _fetch_global_batch(self, assets: List[Asset], secids: List[str]) -> List[Quote]:
+    async def _fetch_global_batch(self, assets: list[Asset], secids: list[str]) -> list[Quote]:
         if not secids:
             return []
 
         # 使用配置化的URL
-        url = config.datasource.eastmoney_batch_api
+        url = self._config.datasource.eastmoney_batch_api
         params = {
             "fltt": 2,
             "invt": 2,
@@ -570,10 +517,9 @@ class QuoteService:
             "fields": "f1,f2,f3,f4,f12,f14,f15,f16,f17,f18,f43,f47,f48",
         }
 
-        data = await http_client.fetch(url, params=params)
+        data = await self._http_client.fetch(url, params=params)
 
         if not data or not isinstance(data, dict) or data.get("rc") != 0 or not data.get("data"):
-            return []
             return []
 
         quotes = []
@@ -606,11 +552,8 @@ class QuoteService:
             )
 
             # 使用基于资产类型的缓存策略
-            ttl = default_cache_strategy.get_ttl(asset.type, asset.market)
+            ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
             cache_key = f"quote:{asset.code}"
-            await cache.async_set(cache_key, self._quote_to_dict(quotes[-1]), ttl)
+            await self._cache.async_set(cache_key, self._quote_to_dict(quotes[-1]), ttl)
 
         return quotes
-
-
-quote_service = QuoteService()

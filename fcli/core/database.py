@@ -3,9 +3,7 @@
 Replaces MySQL (aiomysql) with PostgreSQL (asyncpg) for "Just Use Postgres" architecture.
 """
 
-import asyncio
 import logging
-from typing import Optional, List
 
 import asyncpg
 
@@ -18,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Database:
     """PostgreSQL connection pool manager."""
 
-    _pool: Optional[asyncpg.Pool] = None
+    _pool: asyncpg.Pool | None = None
     _enabled: bool = False
 
     @classmethod
@@ -59,7 +57,7 @@ class Database:
         return cls._enabled and cls._pool is not None
 
     @classmethod
-    def get_pool(cls) -> Optional[asyncpg.Pool]:
+    def get_pool(cls) -> asyncpg.Pool | None:
         """Get connection pool."""
         return cls._pool
 
@@ -86,7 +84,7 @@ class Database:
             return await conn.execute(sql, *args)
 
     @classmethod
-    async def fetch_one(cls, sql: str, *args) -> Optional[asyncpg.Record]:
+    async def fetch_one(cls, sql: str, *args) -> asyncpg.Record | None:
         """Fetch a single row."""
         if not cls.is_enabled():
             return None
@@ -135,7 +133,7 @@ class Database:
         return cls._pool.acquire()
 
     @classmethod
-    def row_to_dict(cls, row: Optional[asyncpg.Record]) -> Optional[dict]:
+    def row_to_dict(cls, row: asyncpg.Record | None) -> dict | None:
         """Convert asyncpg Record to dict."""
         if row is None:
             return None

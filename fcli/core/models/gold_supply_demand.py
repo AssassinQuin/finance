@@ -1,7 +1,6 @@
 """Gold supply and demand quarterly data model."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -9,7 +8,7 @@ from pydantic import BaseModel
 class GoldSupplyDemand(BaseModel):
     """Gold supply/demand data model for quarterly storage."""
 
-    id: Optional[int] = None
+    id: int | None = None
     year: int
     quarter: int  # 1-4
     period: str = ""  # e.g. "2024 Q1"
@@ -32,13 +31,13 @@ class GoldSupplyDemand(BaseModel):
 
     # Balance and price
     supply_demand_balance: float = 0.0  # total_supply - total_demand
-    price_avg_usd: Optional[float] = None  # Average gold price in USD/oz
+    price_avg_usd: float | None = None  # Average gold price in USD/oz
 
     # Metadata
     data_source: str = ""
-    fetch_time: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    fetch_time: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True

@@ -1,10 +1,10 @@
 """Gold reserves store - PostgreSQL implementation."""
 
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 
 from ..database import Database
-from ..models.gold import GoldReserve, CentralBankSchedule
+from ..models.gold import GoldReserve
 from .base import BaseStore
 
 
@@ -97,7 +97,7 @@ class GoldReserveStore(BaseStore[GoldReserve]):
             return 0
 
     @classmethod
-    async def get_latest(cls, country_code: Optional[str] = None) -> Optional[GoldReserve]:
+    async def get_latest(cls, country_code: str | None = None) -> GoldReserve | None:
         """Get latest gold reserve data."""
         if not Database.is_enabled():
             return None
@@ -129,7 +129,7 @@ class GoldReserveStore(BaseStore[GoldReserve]):
         return cls._row_to_model(row)
 
     @classmethod
-    async def get_by_date(cls, data_date: date, country_code: Optional[str] = None) -> Optional[GoldReserve]:
+    async def get_by_date(cls, data_date: date, country_code: str | None = None) -> GoldReserve | None:
         """Get gold reserve data for specific date."""
         if not Database.is_enabled():
             return None
@@ -180,7 +180,7 @@ class GoldReserveStore(BaseStore[GoldReserve]):
         return [cls._row_to_model(row) for row in rows]
 
     @classmethod
-    async def get_latest_date(cls) -> Optional[date]:
+    async def get_latest_date(cls) -> date | None:
         """Get the latest data date."""
         if not Database.is_enabled():
             return None
@@ -310,106 +310,3 @@ class GoldReserveStore(BaseStore[GoldReserve]):
 # Alias for backward compatibility
 GoldStore = GoldReserveStore
 
-
-class CentralBankScheduleStore(BaseStore[CentralBankSchedule]):
-    """Store for central bank schedules using PostgreSQL."""
-
-    table_name = "central_bank_schedules"
-
-    @classmethod
-    async def save(cls, schedule: CentralBankSchedule) -> bool:
-        """Save central bank schedule using PostgreSQL UPSERT."""
-        if not Database.is_enabled():
-            return False
-
-        try:
-            await Database.execute(
-                f"""
-                INSERT INTO {cls.table_name} (
-                    country_code, country_name, release_frequency, release_day_of_month,
-                    release_time, timezone, data_source, source_url, notes, is_active
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ON CONFLICT (country_code) DO UPDATE SET
-                    country_name = EXCLUDED.country_name,
-                    release_frequency = EXCLUDED.release_frequency,
-                    release_day_of_month = EXCLUDED.release_day_of_month,
-                    release_time = EXCLUDED.release_time,
-                    timezone = EXCLUDED.timezone,
-                    data_source = EXCLUDED.data_source,
-                    source_url = EXCLUDED.source_url,
-                    notes = EXCLUDED.notes,
-                    is_active = EXCLUDED.is_active,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                schedule.country_code,
-                schedule.country_name,
-                schedule.release_frequency,
-                schedule.release_day,
-                None,  # release_time
-                None,  # timezone
-                "",  # data_source
-                None,  # source_url
-                None,  # notes
-                schedule.is_active,
-            )
-            return True
-        except Exception:
-            return False
-
-    @classmethod
-    async def get_by_country(cls, country_code: str) -> Optional[CentralBankSchedule]:
-        """Get schedule for a specific country."""
-        if not Database.is_enabled():
-            return None
-
-        row = await Database.fetch_one(
-            f"""
-            SELECT country_code, country_name, release_frequency, release_day_of_month,
-                   is_active, created_at, updated_at
-            FROM {cls.table_name}
-            WHERE country_code = $1
-            """,
-            country_code,
-        )
-
-        if not row:
-            return None
-
-        return CentralBankSchedule(
-            country_code=row["country_code"],
-            country_name=row["country_name"],
-            release_frequency=row["release_frequency"] or "monthly",
-            release_day=row["release_day_of_month"],
-            is_active=row["is_active"] if row["is_active"] is not None else True,
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-
-    @classmethod
-    async def get_all_active(cls) -> list[CentralBankSchedule]:
-        """Get all active schedules."""
-        if not Database.is_enabled():
-            return []
-
-        rows = await Database.fetch_all(
-            f"""
-            SELECT country_code, country_name, release_frequency, release_day_of_month,
-                   is_active, created_at, updated_at
-            FROM {cls.table_name}
-            WHERE is_active = TRUE
-            ORDER BY country_code
-            """
-        )
-
-        return [
-            CentralBankSchedule(
-                country_code=row["country_code"],
-                country_name=row["country_name"],
-                release_frequency=row["release_frequency"] or "monthly",
-                release_day=row["release_day_of_month"],
-                is_active=True,
-                created_at=row["created_at"],
-                updated_at=row["updated_at"],
-            )
-            for row in rows
-        ]

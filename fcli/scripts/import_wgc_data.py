@@ -20,8 +20,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from datetime import datetime
-from typing import Optional
 
 from fcli.core.models.gold_supply_demand import GoldSupplyDemand
 from fcli.core.stores.gold_supply_demand import GoldSupplyDemandStore

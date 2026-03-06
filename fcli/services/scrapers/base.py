@@ -3,12 +3,11 @@ Base scraper class for gold reserve data.
 Provides common functionality for all scrapers.
 """
 
-import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, date
-from typing import List, Dict, Any, Optional
+from datetime import datetime
+from typing import Any
 
 from ...core.models import GoldReserve
 
@@ -18,9 +17,9 @@ class ScraperResult:
     """Result from a scraper operation"""
 
     success: bool
-    data: List[GoldReserve] = field(default_factory=list)
+    data: list[GoldReserve] = field(default_factory=list)
     source: str = ""
-    error_message: Optional[str] = None
+    error_message: str | None = None
     fetch_time_ms: int = 0
     records_count: int = 0
 
@@ -40,8 +39,8 @@ class BaseScraper(ABC):
     """
 
     def __init__(self):
-        self._last_fetch_time: Optional[datetime] = None
-        self._cache: Dict[str, Any] = {}
+        self._last_fetch_time: datetime | None = None
+        self._cache: dict[str, Any] = {}
 
     @property
     @abstractmethod
@@ -58,7 +57,7 @@ class BaseScraper(ABC):
         pass
 
     @abstractmethod
-    def parse(self, raw_data: Any) -> List[GoldReserve]:
+    def parse(self, raw_data: Any) -> list[GoldReserve]:
         """
         Parse raw data into GoldReserve objects.
 

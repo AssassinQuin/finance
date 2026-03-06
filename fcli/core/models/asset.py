@@ -1,11 +1,11 @@
 """Asset and Quote models."""
 
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .base import Market, AssetType
+from .base import AssetType, Market
 
 
 class Asset(BaseModel):
@@ -17,7 +17,7 @@ class Asset(BaseModel):
     market: Market
     type: AssetType
     added_at: datetime = Field(default_factory=datetime.now)
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
@@ -33,11 +33,11 @@ class Quote(BaseModel):
     update_time: datetime  # 使用 datetime 类型，在展示层格式化
     market: Market
     type: AssetType
-    currency: Optional[str] = None
-    high: Optional[float] = None
-    low: Optional[float] = None
-    volume: Optional[str] = None
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    currency: str | None = None
+    high: float | None = None
+    low: float | None = None
+    volume: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExchangeRate(BaseModel):
@@ -46,5 +46,5 @@ class ExchangeRate(BaseModel):
     base_currency: str = Field(..., description="Base currency code, e.g., USD")
     quote_currency: str = Field(..., description="Quote currency code, e.g., CNY")
     rate: float = Field(..., description="Exchange rate")
-    source: Optional[str] = Field(None, description="Data source")
-    update_time: Optional[datetime] = Field(None, description="Last update time")
+    source: str | None = Field(None, description="Data source")
+    update_time: datetime | None = Field(None, description="Last update time")

@@ -3,15 +3,12 @@ Federal Reserve Economic Data (FRED) scraper for US gold reserves.
 Uses the FRED API to fetch US official gold holdings.
 """
 
-import asyncio
-import time
-from datetime import datetime, date
-from typing import List, Optional
 import logging
+from datetime import date, datetime
 
-from ..base import BaseScraper, ScraperResult
 from ....core.models import GoldReserve
 from ....infra.http_client import http_client
+from ..base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +31,7 @@ class FREDSscraper(BaseScraper):
     def source_name(self) -> str:
         return self._source_name
 
-    async def fetch(self) -> Optional[dict]:
+    async def fetch(self) -> dict | None:
         try:
             api_key = self.fred_api_key or "fred"
 
@@ -60,7 +57,7 @@ class FREDSscraper(BaseScraper):
         start = datetime.now() - timedelta(days=730)
         return start.strftime("%Y-%m-%d")
 
-    def parse(self, raw_data: Optional[dict]) -> List[GoldReserve]:
+    def parse(self, raw_data: dict | None) -> list[GoldReserve]:
         if not raw_data:
             return []
 

@@ -1,20 +1,18 @@
 """Watchlist service for managing user's tracked assets."""
 
-from typing import List
-from datetime import datetime
 
-from ..core.models import Asset, Market, AssetType
+from ..core.models import Asset, AssetType, Market
 from ..core.storage import storage
 
 
 class WatchlistService:
     """Service for managing watchlist assets with DB and JSON fallback."""
 
-    async def list_assets(self) -> List[Asset]:
+    async def list_assets(self) -> list[Asset]:
         """List all active assets in watchlist."""
         return await storage.load()
 
-    async def add_assets(self, codes: List[str]) -> int:
+    async def add_assets(self, codes: list[str]) -> int:
         """Add assets to watchlist. Returns count added."""
         if not codes:
             return 0

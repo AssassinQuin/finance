@@ -1,6 +1,8 @@
-import typer
 import asyncio
 
+import typer
+
+from ..core.config import config
 from ..core.database import Database
 from ..services.gpr_service import gpr_service
 from ..utils.presenter import ConsolePresenter
@@ -28,6 +30,7 @@ def index(
 async def _index(update: bool, chart: bool) -> None:
     try:
         if update:
+            await Database.init(config)
             result = await gpr_service.update_data()
             if result.get("success"):
                 ConsolePresenter.print_success(f"已更新GPR数据: {result.get('records', 0)} 条记录")
@@ -55,12 +58,8 @@ def history(
     months: int = typer.Option(120, "-m", "--months", help="显示月数"),
 ):
     """GPR 历史趋势"""
-    try:
-        data = gpr_service.get_gpr_history(months=months)
-        if data:
-            ConsolePresenter.print_gpr_chart(data)
-        else:
-            ConsolePresenter.print_warning("暂无历史数据")
-    finally:
-        if Database.is_enabled():
-            asyncio.run(Database.close())
+    data = gpr_service.get_gpr_history(months=months)
+    if data:
+        ConsolePresenter.print_gpr_chart(data)
+    else:
+        ConsolePresenter.print_warning("暂无历史数据")

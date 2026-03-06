@@ -4,11 +4,11 @@ AkShare 数据源爬虫 - 中国黄金储备历史数据
 """
 
 import logging
-from datetime import datetime, date
-from typing import List, Dict, Any, Optional
+from datetime import date, datetime
+from typing import Any
 
-from .base import BaseScraper, ScraperResult
 from ...core.models import GoldReserve
+from .base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,7 @@ class AkShareScraper(BaseScraper):
             dict: {"type": "akshare", "data": [...]}
         """
         try:
-            import akshare as ak
-            import pandas as pd
+            import akshare as ak  # noqa: F401
         except ImportError:
             logger.error("AkShare 未安装，请运行: pip install akshare")
             return None
@@ -109,7 +108,7 @@ class AkShareScraper(BaseScraper):
             logger.error(f"AkShare fetch failed: {e}")
             return None
 
-    def _parse_date(self, date_str: str) -> Optional[str]:
+    def _parse_date(self, date_str: str) -> str | None:
         """
         解析日期字符串
 
@@ -146,7 +145,7 @@ class AkShareScraper(BaseScraper):
 
         return None
 
-    def parse(self, raw_data: Any) -> List[GoldReserve]:
+    def parse(self, raw_data: Any) -> list[GoldReserve]:
         """
         解析 AkShare 数据为 GoldReserve 对象列表
 

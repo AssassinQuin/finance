@@ -4,13 +4,9 @@ SPDR Gold Trust 持仓数据服务
 """
 
 import logging
-from datetime import datetime, date
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 from ..core.cache import cache
-from ..core.config import config
-from ..infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +27,7 @@ class SPDRService:
     def __init__(self):
         self._cache_key = "spdr:holdings"
 
-    async def get_holdings(self, days: int = 30) -> List[Dict]:
+    async def get_holdings(self, days: int = 30) -> list[dict]:
         """
         获取 SPDR 持仓历史数据
 
@@ -84,12 +80,12 @@ class SPDRService:
             logger.error(f"Failed to fetch SPDR holdings: {e}")
             return []
 
-    async def get_latest(self) -> Optional[Dict]:
+    async def get_latest(self) -> dict | None:
         """获取最新的 SPDR 持仓"""
         holdings = await self.get_holdings(days=1)
         return holdings[0] if holdings else None
 
-    async def get_summary(self) -> Dict:
+    async def get_summary(self) -> dict:
         """
         获取 SPDR 持仓摘要
 

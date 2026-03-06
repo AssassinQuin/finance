@@ -1,9 +1,9 @@
-﻿import typer
 import asyncio
-from typing import Optional
 
-from ..services.forex_service import forex_service
+import typer
+
 from ..infra.http_client import http_client
+from ..services.forex_service import forex_service
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="汇率查询")
@@ -12,7 +12,7 @@ app = typer.Typer(help="汇率查询")
 @app.callback(invoke_without_command=True)
 def rate(
     base: str = typer.Argument("USD", help="基准货币"),
-    quote: Optional[str] = typer.Argument(None, help="目标货币"),
+    quote: str | None = typer.Argument(None, help="目标货币"),
 ):
     """汇率查询 (默认命令)
 
@@ -27,8 +27,14 @@ def rate(
     asyncio.run(_rate(base, quote))
 
 
-async def _rate(base: str, quote: Optional[str]) -> None:
+async def _rate(base: str, quote: str | None) -> None:
+    from ..core.config import config
+    from ..core.database import Database
+
     try:
+        # Initialize database for cache support
+        await Database.init(config)
+
         if quote:
             rate = await forex_service.get_rate(base, quote)
             if rate:
@@ -47,6 +53,7 @@ async def _rate(base: str, quote: Optional[str]) -> None:
                 ConsolePresenter.print_error(f"无法获取 {base} 汇率")
     finally:
         await http_client.close()
+        await Database.close()
 
 
 @app.command()

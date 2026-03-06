@@ -6,15 +6,15 @@
 数据获取方式: 从年度页面获取 Excel 文件下载链接，解析 Excel 获取月度数据
 """
 
-import re
 import logging
-from datetime import datetime, date
-from typing import List, Dict, Any, Optional
+import re
+from datetime import date, datetime
 from io import BytesIO
+from typing import Any
 
-from .base import BaseScraper
 from ...core.models import GoldReserve
 from ...infra.http_client import http_client
+from .base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class SAFEScraper(BaseScraper):
             "data": all_data,
         }
 
-    async def fetch_by_month(self, year: int, month: int) -> Optional[Dict]:
+    async def fetch_by_month(self, year: int, month: int) -> dict | None:
         """
         获取指定年月的黄金储备数据
 
@@ -160,7 +160,7 @@ class SAFEScraper(BaseScraper):
             logger.error(f"Failed to fetch SAFE data for {year}-{month}: {e}")
             return None
 
-    async def _discover_excel_pages(self) -> Dict[int, str]:
+    async def _discover_excel_pages(self) -> dict[int, str]:
         """
         从索引页动态发现有 Excel 文件的年度页面
 
@@ -209,7 +209,7 @@ class SAFEScraper(BaseScraper):
 
         return discovered
 
-    def _find_xlsx_url(self, html: str) -> Optional[str]:
+    def _find_xlsx_url(self, html: str) -> str | None:
         """
         从 HTML 页面中提取 Excel 文件下载链接
 
@@ -232,7 +232,7 @@ class SAFEScraper(BaseScraper):
 
         return None
 
-    async def _fetch_and_parse_excel(self, xlsx_url: str, year: int) -> List[Dict]:
+    async def _fetch_and_parse_excel(self, xlsx_url: str, year: int) -> list[dict]:
         """
         下载并解析 Excel 文件
 
@@ -331,7 +331,7 @@ class SAFEScraper(BaseScraper):
             logger.error(f"Failed to parse Excel for {year}: {e}")
             return []
 
-    def parse(self, raw_data: Any) -> List[GoldReserve]:
+    def parse(self, raw_data: Any) -> list[GoldReserve]:
         """
         解析 SAFE 数据为 GoldReserve 对象列表
 

@@ -3,16 +3,13 @@ Bank of Japan scraper for Japanese gold reserves.
 Scrapes BOJ website for Japanese gold holdings.
 """
 
-import asyncio
-import time
-import re
-from datetime import datetime, date
-from typing import List, Optional
 import logging
+import re
+from datetime import date, datetime
 
-from ..base import BaseScraper, ScraperResult
 from ....core.models import GoldReserve
 from ....infra.http_client import http_client
+from ..base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +29,7 @@ class BOJScraper(BaseScraper):
     def source_name(self) -> str:
         return self._source_name
 
-    async def fetch(self) -> Optional[str]:
+    async def fetch(self) -> str | None:
         try:
             url = "https://www.boj.or.jp/en/statistics/boj/other/acmai/release/"
 
@@ -43,7 +40,7 @@ class BOJScraper(BaseScraper):
             logger.error(f"BOJ fetch failed: {e}")
             return None
 
-    def parse(self, raw_data: Optional[str]) -> List[GoldReserve]:
+    def parse(self, raw_data: str | None) -> list[GoldReserve]:
         if not raw_data:
             return []
 

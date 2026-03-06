@@ -10,13 +10,12 @@ Usage:
     python -m fcli.scripts.save_gold_reserves --latest  # 仅获取最新一个月
 """
 
-import asyncio
 import argparse
+import asyncio
 import logging
 import sys
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
 
 # 支持直接运行脚本： 自动添加项目根目录到 sys.path
 _script_dir = Path(__file__).resolve().parent.parent
@@ -28,8 +27,8 @@ from fcli.core.config import config
 from fcli.core.database import Database
 from fcli.core.models import GoldReserve
 from fcli.core.stores import GoldReserveStore
-from fcli.services.scrapers.imf_scraper import IMFScraper
 from fcli.infra.http_client import http_client
+from fcli.services.scrapers.imf_scraper import IMFScraper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -73,7 +72,7 @@ def usd_to_tonnes(usd_millions: float, gold_price: float | None = None) -> float
     return round(tonnes, 2)
 
 
-async def save_latest_reserves(scraper: IMFScraper, country_codes: Optional[list[str]] = None) -> int:
+async def save_latest_reserves(scraper: IMFScraper, country_codes: list[str] | None = None) -> int:
     """
     保存各国最新一个月的黄金储备
 
@@ -125,7 +124,7 @@ async def save_latest_reserves(scraper: IMFScraper, country_codes: Optional[list
     return saved
 
 
-async def save_history_reserves(scraper: IMFScraper, country_codes: Optional[list[str]] = None, years: int = 10) -> int:
+async def save_history_reserves(scraper: IMFScraper, country_codes: list[str] | None = None, years: int = 10) -> int:
     """
     保存各国近N年的月度黄金储备历史
 

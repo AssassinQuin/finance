@@ -1,7 +1,6 @@
 """Gold supply/demand store for quarterly data persistence."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from ..models.gold_supply_demand import GoldSupplyDemand
 from .base import BaseStore
@@ -115,7 +114,7 @@ class GoldSupplyDemandStore(BaseStore[GoldSupplyDemand]):
             return True
 
     @classmethod
-    async def get_by_quarter(cls, year: int, quarter: int) -> Optional[GoldSupplyDemand]:
+    async def get_by_quarter(cls, year: int, quarter: int) -> GoldSupplyDemand | None:
         """Get supply/demand data for a specific quarter."""
         if not cls._is_enabled():
             return None
@@ -133,7 +132,7 @@ class GoldSupplyDemandStore(BaseStore[GoldSupplyDemand]):
             return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
-    async def get_latest(cls) -> Optional[GoldSupplyDemand]:
+    async def get_latest(cls) -> GoldSupplyDemand | None:
         """Get the most recent quarter's data."""
         if not cls._is_enabled():
             return None
@@ -147,7 +146,7 @@ class GoldSupplyDemandStore(BaseStore[GoldSupplyDemand]):
             return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
-    async def get_history(cls, limit: int = 8) -> List[GoldSupplyDemand]:
+    async def get_history(cls, limit: int = 8) -> list[GoldSupplyDemand]:
         """Get historical supply/demand data (last N quarters)."""
         if not cls._is_enabled():
             return []

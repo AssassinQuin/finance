@@ -1,5 +1,5 @@
-from typing import Any, Optional
 from enum import Enum
+from typing import Any
 
 
 class ErrorCode(str, Enum):
@@ -48,8 +48,8 @@ class FcliError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: Optional[ErrorCode] = None,
-        context: Optional[dict[str, Any]] = None,
+        error_code: ErrorCode | None = None,
+        context: dict[str, Any] | None = None,
     ):
         super().__init__(message)
         self.message = message
@@ -83,7 +83,7 @@ class AllSourcesFailedError(SourceError):
 class QuoteParseError(SourceError):
     """行情数据解析错误"""
 
-    def __init__(self, message: str, raw_data: Optional[str] = None):
+    def __init__(self, message: str, raw_data: str | None = None):
         self.raw_data = raw_data
         super().__init__(message)
 
@@ -91,7 +91,7 @@ class QuoteParseError(SourceError):
 class NetworkError(SourceError):
     """网络请求错误"""
 
-    def __init__(self, message: str, url: Optional[str] = None):
+    def __init__(self, message: str, url: str | None = None):
         self.url = url
         super().__init__(message)
 
@@ -99,7 +99,7 @@ class NetworkError(SourceError):
 class TimeoutError(SourceError):
     """请求超时错误"""
 
-    def __init__(self, message: str, timeout_seconds: Optional[float] = None):
+    def __init__(self, message: str, timeout_seconds: float | None = None):
         self.timeout_seconds = timeout_seconds
         super().__init__(message)
 
@@ -107,7 +107,7 @@ class TimeoutError(SourceError):
 class RateLimitError(SourceError):
     """API 限流错误"""
 
-    def __init__(self, message: str, retry_after: Optional[int] = None):
+    def __init__(self, message: str, retry_after: int | None = None):
         self.retry_after = retry_after
         super().__init__(message)
 
@@ -115,7 +115,7 @@ class RateLimitError(SourceError):
 class DataValidationError(SourceError):
     """数据验证错误"""
 
-    def __init__(self, message: str, field: Optional[str] = None, value: Optional[Any] = None):
+    def __init__(self, message: str, field: str | None = None, value: Any | None = None):
         self.field = field
         self.value = value
         super().__init__(message)
@@ -130,7 +130,7 @@ class DatabaseError(FcliError):
 class CacheError(FcliError):
     """缓存操作错误"""
 
-    def __init__(self, message: str, key: Optional[str] = None):
+    def __init__(self, message: str, key: str | None = None):
         self.key = key
         super().__init__(message)
 

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """FCLI - 命令行金融工具"""
 
-import typer
 import asyncio
-from typing import Optional, List
 
-from .core.models.base import Market, AssetType
-from .core.models.asset import Asset
-from .services.quote_service import quote_service
-from .services.watchlist_service import watchlist_service
-from .infra.http_client import http_client
-from .utils.presenter import ConsolePresenter
-from .commands.watchlist import app as watchlist_app
+import typer
+
+from .commands.fx import app as fx_app
 from .commands.gold import app as gold_app
 from .commands.gpr import app as gpr_app
-from .commands.fx import app as fx_app
+from .commands.watchlist import app as watchlist_app
+from .core.config import symbol_registry
+from .core.container import container
+from .core.models.asset import Asset
+from .utils.presenter import ConsolePresenter
 
 app = typer.Typer(
     name="fcli",
@@ -26,7 +24,7 @@ app = typer.Typer(
 
 @app.command(name="quote", deprecated=False)
 def quote_cmd(
-    codes: Optional[List[str]] = typer.Argument(None, help="股票代码列表"),
+    codes: list[str] | None = typer.Argument(None, help="股票代码列表"),
 ):
     """查询自选行情
 
@@ -50,28 +48,50 @@ def main(ctx: typer.Context):
         asyncio.run(_fetch_quotes(None))
 
 
-async def _fetch_quotes(codes: Optional[List[str]] = None) -> None:
-    if codes:
-        assets = [Asset(code=c, market=Market.CN, type=AssetType.STOCK, api_code=c, name=c) for c in codes]
-    else:
-        assets = await watchlist_service.list_assets()
-        if not assets:
-            ConsolePresenter.print_warning("暂无自选。使用 'fcli watchlist add <代码>' 添加。")
-            return
+async def _fetch_quotes(codes: list[str] | None = None) -> None:
+    from .core.config import config
+    from .core.database import Database
 
     try:
-        quotes = await quote_service.fetch_all(assets)
-        if quotes:
-            ConsolePresenter.print_quote_table(quotes)
-        else:
-            ConsolePresenter.print_warning("获取行情失败 - 返回空数据")
-    except Exception as e:
-        ConsolePresenter.print_error(f"获取行情失败: {e}")
-        import traceback
+        await Database.init(config)
 
-        traceback.print_exc()
+        if codes:
+            assets = []
+            for c in codes:
+                market = symbol_registry.infer_market(c)
+                api_code = symbol_registry.resolve_api_code(c, market)
+                asset_type = symbol_registry.infer_type(c)
+                assets.append(
+                    Asset(
+                        code=c,
+                        market=market,
+                        type=asset_type,
+                        api_code=api_code,
+                        name=c,
+                    )
+                )
+        else:
+            from .services.watchlist_service import watchlist_service
+
+            assets = await watchlist_service.list_assets()
+            if not assets:
+                ConsolePresenter.print_warning("暂无自选。使用 'fcli watchlist add <代码>' 添加。")
+                return
+
+        try:
+            quotes = await container.quote_service.fetch_all(assets)
+            if quotes:
+                ConsolePresenter.print_quote_table(quotes)
+            else:
+                ConsolePresenter.print_warning("获取行情失败 - 返回空数据")
+        except Exception as e:
+            ConsolePresenter.print_error(f"获取行情失败: {e}")
+            import traceback
+
+            traceback.print_exc()
     finally:
-        await http_client.close()
+        await Database.close()
+        await container.cleanup()
 
 
 app.add_typer(watchlist_app, name="watchlist", help="自选股管理 (add/rm/ls)")

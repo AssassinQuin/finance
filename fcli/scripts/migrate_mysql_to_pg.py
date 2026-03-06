@@ -13,7 +13,7 @@ import os
 import sys
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 try:
     import aiomysql
@@ -47,7 +47,7 @@ PG_CONFIG = {
 }
 
 
-def decimal_to_float(value: Any) -> Optional[float]:
+def decimal_to_float(value: Any) -> float | None:
     if value is None:
         return None
     if isinstance(value, Decimal):
@@ -74,7 +74,7 @@ async def migrate_table(
 
     count = 0
     for row in rows:
-        row_dict = dict(zip(columns, row))
+        row_dict = dict(zip(columns, row, strict=False))
         pg_data = transform_row(row_dict)
 
         pg_columns = list(column_mapping.keys())

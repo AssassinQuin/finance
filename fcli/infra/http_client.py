@@ -1,8 +1,9 @@
-import aiohttp
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
+
+import aiohttp
 
 from ..core.config import config
 
@@ -11,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 class HttpClient:
     def __init__(self):
-        self.session: Optional[aiohttp.ClientSession] = None
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self.session: aiohttp.ClientSession | None = None
+        self._semaphore: asyncio.Semaphore | None = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
@@ -32,27 +33,32 @@ class HttpClient:
     async def fetch(
         self,
         url: str,
-        params: Optional[Dict] = None,
+        params: dict | None = None,
         text_mode: bool = False,
         binary_mode: bool = False,
         follow_redirects: bool = True,
         use_proxy: bool = True,
+        headers: dict | None = None,
+        encoding: str | None = None,
     ) -> Any:
-        # 使用信号量限制并发
         if self._semaphore is None:
             self._semaphore = asyncio.Semaphore(config.http.max_concurrent or 10)
 
         async with self._semaphore:
-            return await self._fetch_internal(url, params, text_mode, binary_mode, follow_redirects, use_proxy)
+            return await self._fetch_internal(
+                url, params, text_mode, binary_mode, follow_redirects, use_proxy, headers, encoding
+            )
 
     async def _fetch_internal(
         self,
         url: str,
-        params: Optional[Dict] = None,
+        params: dict | None = None,
         text_mode: bool = False,
         binary_mode: bool = False,
         follow_redirects: bool = True,
         use_proxy: bool = True,
+        extra_headers: dict | None = None,
+        encoding: str | None = None,
     ) -> Any:
         session = await self.get_session()
 
@@ -72,18 +78,24 @@ class HttpClient:
         for attempt in range(max_retries):
             try:
                 timeout = aiohttp.ClientTimeout(total=total_timeout, connect=connect_timeout)
+                request_headers = extra_headers or {}
                 async with session.get(
-                    url, params=params, timeout=timeout, allow_redirects=follow_redirects, proxy=proxy
+                    url,
+                    params=params,
+                    timeout=timeout,
+                    allow_redirects=follow_redirects,
+                    proxy=proxy,
+                    headers=request_headers if request_headers else None,
                 ) as response:
                     if binary_mode:
                         return await response.read()
                     if text_mode:
-                        return await response.text()
+                        return await response.text(encoding=encoding) if encoding else await response.text()
                     try:
                         return await response.json()
                     except (json.JSONDecodeError, aiohttp.ContentTypeError):
                         # Response is not JSON, return as text
-                        return await response.text()
+                        return await response.text(encoding=encoding) if encoding else await response.text()
             except asyncio.TimeoutError:
                 logger.debug(f"Timeout on attempt {attempt + 1}/{max_retries}: {url}")
                 if attempt < max_retries - 1:
@@ -98,7 +110,7 @@ class HttpClient:
 
         return None
 
-    async def get_binary(self, url: str, use_proxy: bool = True) -> Optional[bytes]:
+    async def get_binary(self, url: str, use_proxy: bool = True) -> bytes | None:
         result = await self.fetch(url, binary_mode=True, use_proxy=use_proxy)
         return result if isinstance(result, bytes) else None
 

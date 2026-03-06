@@ -6,7 +6,7 @@ IMF SDMX 3.0 API Gold Reserves Scraper
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+
 import aiohttp
 
 from fcli.core.config import config
@@ -86,14 +86,14 @@ class IMFScraper:
         }
         if self.api_key:
             self.headers["Ocp-Apim-Subscription-Key"] = self.api_key
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
 
-    def _get_api_key(self) -> Optional[str]:
+    def _get_api_key(self) -> str | None:
         """获取IMF API密钥（可选）"""
         return config.api.imf_primary
 
-    def _get_proxy(self) -> Optional[str]:
+    def _get_proxy(self) -> str | None:
         """获取代理配置"""
         if config.proxy.enabled:
             return config.proxy.http
@@ -119,8 +119,8 @@ class IMFScraper:
     def _build_data_url(
         self,
         country_code: str,
-        start_period: Optional[str] = None,
-        end_period: Optional[str] = None,
+        start_period: str | None = None,
+        end_period: str | None = None,
     ) -> str:
         """
         构建IMF SDMX 3.0数据查询URL
@@ -157,8 +157,8 @@ class IMFScraper:
     async def fetch_gold_reserves(
         self,
         country_code: str,
-        start_period: Optional[str] = None,
-        end_period: Optional[str] = None,
+        start_period: str | None = None,
+        end_period: str | None = None,
     ) -> dict:
         """
         获取指定国家的黄金储备数据
@@ -232,7 +232,7 @@ class IMFScraper:
             for data_set in data_sets:
                 series = data_set.get("series", {})
 
-                for series_key, series_data in series.items():
+                for _series_key, series_data in series.items():
                     observations = series_data.get("observations", {})
 
                     for obs_idx, obs_value in observations.items():
@@ -268,7 +268,7 @@ class IMFScraper:
                                 if gold_tonnes > 0:
                                     result[period] = round(gold_tonnes, 2)
 
-                        except (ValueError, TypeError, IndexError) as e:
+                        except (ValueError, TypeError, IndexError):
                             continue
 
         except Exception as e:
@@ -276,7 +276,7 @@ class IMFScraper:
 
         return result
 
-    async def get_latest_gold_reserve(self, country_code: str) -> Optional[dict]:
+    async def get_latest_gold_reserve(self, country_code: str) -> dict | None:
         """
         获取最新一个月的黄金储备
 
@@ -335,7 +335,7 @@ class IMFScraper:
             "data": data,
         }
 
-    async def batch_get_latest_reserves(self, country_codes: Optional[list[str]] = None) -> list[dict]:
+    async def batch_get_latest_reserves(self, country_codes: list[str] | None = None) -> list[dict]:
         """
         批量获取多国最新黄金储备
 
@@ -365,7 +365,7 @@ class IMFScraper:
 
         return valid_results
 
-    async def batch_get_history(self, country_codes: Optional[list[str]] = None, years: int = 10) -> list[dict]:
+    async def batch_get_history(self, country_codes: list[str] | None = None, years: int = 10) -> list[dict]:
         """
         批量获取多国近N年月度黄金储备历史
 
@@ -394,7 +394,7 @@ class IMFScraper:
 
 
 # 便捷函数
-async def get_latest_gold(country_code: str) -> Optional[dict]:
+async def get_latest_gold(country_code: str) -> dict | None:
     """获取单个国家最新黄金储备"""
     scraper = IMFScraper()
     try:

@@ -1,6 +1,6 @@
 """Database interface definitions."""
 
-from typing import Any, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -23,7 +23,7 @@ class IDatabase(Protocol):
         """
         ...
 
-    async def fetch_one(self, sql: str, *args: Any) -> Optional[dict]:
+    async def fetch_one(self, sql: str, *args: Any) -> dict | None:
         """Fetch a single row.
 
         Args:
@@ -35,7 +35,7 @@ class IDatabase(Protocol):
         """
         ...
 
-    async def fetch_all(self, sql: str, *args: Any) -> List[dict]:
+    async def fetch_all(self, sql: str, *args: Any) -> list[dict]:
         """Fetch all rows.
 
         Args:

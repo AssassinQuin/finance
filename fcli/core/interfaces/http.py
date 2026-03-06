@@ -4,7 +4,7 @@ Defines the contract for HTTP client implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -18,7 +18,7 @@ class IHttpClient(Protocol):
     async def fetch(
         self,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         text_mode: bool = False,
         binary_mode: bool = False,
         follow_redirects: bool = True,
@@ -55,7 +55,7 @@ class HttpClientABC(ABC):
     async def fetch(
         self,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         text_mode: bool = False,
         binary_mode: bool = False,
         follow_redirects: bool = True,

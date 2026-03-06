@@ -16,7 +16,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from fcli.core.config import symbol_registry
-from fcli.core.models.base import Market
 from fcli.core.storage import storage
 
 

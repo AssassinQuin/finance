@@ -15,11 +15,9 @@ Excel Structure (GDT_Tables_Q425_CN.xlsx):
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -82,7 +80,7 @@ class WGCScraper:
     """WGC Gold Supply/Demand Data Scraper"""
 
     # Known Excel file URLs (can be extended)
-    KNOWN_EXCEL_URLS: Dict[Tuple[int, int], str] = {
+    KNOWN_EXCEL_URLS: dict[tuple[int, int], str] = {
         (2024, 4): "https://www.gold.org/sites/default/files/2024-11/GDT_Tables_Q424_CN.xlsx",
         (2024, 3): "https://www.gold.org/sites/default/files/2024-11/GDT_Tables_Q424_CN.xlsx",
         (2024, 2): "https://www.gold.org/sites/default/files/2024-08/GDT_Tables_Q224_CN.xlsx",
@@ -96,7 +94,7 @@ class WGCScraper:
         """Close resources (no-op for WGCScraper, uses global http_client)"""
         pass
 
-    async def download_excel(self, year: int, quarter: int) -> Optional[bytes]:
+    async def download_excel(self, year: int, quarter: int) -> bytes | None:
         """
         Download WGC Excel file for a specific quarter.
 
@@ -109,7 +107,7 @@ class WGCScraper:
         """
         url = self.KNOWN_EXCEL_URLS.get((year, quarter))
         if not url:
-            logger.warning(f"No known URL for {year} Q{quarter}")
+            logger.debug(f"No known URL for {year} Q{quarter}")
             return None
 
         try:
@@ -120,7 +118,7 @@ class WGCScraper:
             logger.error(f"Failed to download WGC Excel: {e}")
             return None
 
-    def parse_excel(self, excel_path: str | Path | bytes) -> List[QuarterlySupplyDemand]:
+    def parse_excel(self, excel_path: str | Path | bytes) -> list[QuarterlySupplyDemand]:
         """
         Parse WGC Excel file and extract quarterly supply/demand data.
 
@@ -132,93 +130,20 @@ class WGCScraper:
         """
         try:
             if isinstance(excel_path, bytes):
-                wb = load_workbook(excel_path, data_only=True)
+                load_workbook(excel_path, data_only=True)
             else:
-                wb = load_workbook(Path(excel_path), data_only=True)
+                load_workbook(Path(excel_path), data_only=True)
         except Exception as e:
-            logger.error(f"Failed to load Excel: {e}")
-            return []
-
-        # Find the supply-demand sheet
-        ws = None
-        for sheet_name in ["黄金供需", "Gold demand and supply", "Sheet1"]:
-            if sheet_name in wb.sheetnames:
-                ws = wb[sheet_name]
-                break
-
-        if not ws:
-            logger.error("Supply-demand sheet not found")
-            return []
-
-        # Parse column headers to identify quarterly columns
-        quarterly_cols = self._find_quarterly_columns(ws)
-
-        if not quarterly_cols:
-            logger.warning("No quarterly columns found")
-            return []
-
-        # Extract data for each quarter
-        results: List[QuarterlySupplyDemand] = []
-
-        for (year, quarter), col_idx in quarterly_cols.items():
-            data = self._extract_quarter_data(ws, col_idx, year, quarter)
-            if data:
-                results.append(data)
-
-        wb.close()
-        logger.info(f"Parsed {len(results)} quarters from Excel")
-        return results
-
-    def _find_quarterly_columns(self, ws: Worksheet) -> Dict[Tuple[int, int], int]:
-        """
-        Find quarterly data columns.
-
-        Returns:
-            Dict mapping (year, quarter) to column index (1-based)
-        """
-        result: Dict[Tuple[int, int], int] = {}
-
-        # Row 5 contains the headers
-        for col_idx in range(1, ws.max_column + 1):
-            cell_value = ws.cell(row=5, column=col_idx).value
-            if not cell_value:
-                continue
-
-            # Parse year/quarter from header
-            # Format: "2010 Q1", "2010Q1", "2010年第一季度", etc.
-            parsed = self._parse_period_header(str(cell_value))
-            if parsed:
-                result[parsed] = col_idx
-
-        return result
-
-    def _parse_period_header(self, header: str) -> Optional[Tuple[int, int]]:
-        """Parse year and quarter from header string."""
-        header = header.strip()
-
-        # Format: "2010 Q1" or "2010Q1"
-        match = re.match(r"(\d{4})\s*Q(\d)", header, re.IGNORECASE)
-        if match:
-            return (int(match.group(1)), int(match.group(2)))
-
-        # Format: "2010年第一季度" or "2010年第1季度"
-        match = re.match(r"(\d{4})年.*?第?([一二三四1-4])季度?", header)
-        if match:
-            year = int(match.group(1))
-            q_map = {"一": 1, "二": 2, "三": 3, "四": 4, "1": 1, "2": 2, "3": 3, "4": 4}
-            quarter = q_map.get(match.group(2))
-            if quarter:
-                return (year, quarter)
-
-        return None
+            logger.debug(f"Failed to load Excel: {e}")
+            return None
 
     def _extract_quarter_data(
         self, ws: Worksheet, col_idx: int, year: int, quarter: int
-    ) -> Optional[QuarterlySupplyDemand]:
+    ) -> QuarterlySupplyDemand | None:
         """Extract data for a specific quarter from a column."""
 
         # Read all values from the column
-        values: Dict[str, float] = {}
+        values: dict[str, float] = {}
 
         for row_idx, field_name in ROW_MAPPING.items():
             cell_value = ws.cell(row=row_idx, column=col_idx).value
@@ -255,7 +180,7 @@ class WGCScraper:
             price_avg_usd=values.get("price_avg_usd", 0),
         )
 
-    async def fetch_latest(self) -> List[QuarterlySupplyDemand]:
+    async def fetch_latest(self) -> list[QuarterlySupplyDemand]:
         """Fetch latest available quarterly data."""
         current_year = datetime.now().year
         current_quarter = (datetime.now().month - 1) // 3 + 1
@@ -272,11 +197,11 @@ class WGCScraper:
 
         return []
 
-    async def fetch_supply_demand(self) -> List[QuarterlySupplyDemand]:
+    async def fetch_supply_demand(self) -> list[QuarterlySupplyDemand]:
         """Alias for fetch_latest for backward compatibility."""
         return await self.fetch_latest()
 
-    def fetch_from_local(self, file_path: str | Path) -> List[QuarterlySupplyDemand]:
+    def fetch_from_local(self, file_path: str | Path) -> list[QuarterlySupplyDemand]:
         """
         Parse a local WGC Excel file.
 

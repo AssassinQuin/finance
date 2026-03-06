@@ -4,7 +4,6 @@ import asyncio
 import logging
 from datetime import datetime
 from io import BytesIO
-from typing import Dict, List, Optional
 
 import aiohttp
 import pandas as pd
@@ -19,10 +18,10 @@ class GPRScraper:
 
     def __init__(self):
         self.data_url = config.datasource.gpr_data_url
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
 
-    def _get_proxy(self) -> Optional[str]:
+    def _get_proxy(self) -> str | None:
         if config.proxy.enabled:
             return config.proxy.http
         return None
@@ -42,7 +41,7 @@ class GPRScraper:
                 await connector.close()
             self._session = None
 
-    async def fetch_gpr_data(self, start_year: Optional[int] = None) -> Dict[str, float]:
+    async def fetch_gpr_data(self, start_year: int | None = None) -> dict[str, float]:
         """
         Fetch GPR historical data from Excel file.
 
@@ -65,7 +64,7 @@ class GPRScraper:
 
         return self._parse_excel(excel_data, start_year)
 
-    def _parse_excel(self, excel_data: bytes, start_year: Optional[int] = None) -> Dict[str, float]:
+    def _parse_excel(self, excel_data: bytes, start_year: int | None = None) -> dict[str, float]:
         """
         Parse GPR Excel file.
 
@@ -144,7 +143,7 @@ class GPRScraper:
         logger.info(f"Parsed {len(result)} GPR data points")
         return result
 
-    async def get_latest_gpr(self) -> Optional[Dict]:
+    async def get_latest_gpr(self) -> dict | None:
         """
         Get the latest GPR index value.
 
@@ -159,7 +158,7 @@ class GPRScraper:
         latest_period = max(data.keys())
         return {"period": latest_period, "value": data[latest_period]}
 
-    async def get_gpr_history(self, months: int = 12) -> List[Dict]:
+    async def get_gpr_history(self, months: int = 12) -> list[dict]:
         """
         Get GPR history for the last N months.
 
@@ -179,7 +178,7 @@ class GPRScraper:
         return [{"date": date, "value": value} for date, value in sorted_items]
 
 
-async def fetch_gpr_update() -> Dict[str, float]:
+async def fetch_gpr_update() -> dict[str, float]:
     """Fetch all GPR historical data."""
     scraper = GPRScraper()
     try:
@@ -188,7 +187,7 @@ async def fetch_gpr_update() -> Dict[str, float]:
         await scraper.close()
 
 
-async def get_latest_gpr() -> Optional[Dict]:
+async def get_latest_gpr() -> dict | None:
     """Get latest GPR value."""
     scraper = GPRScraper()
     try:

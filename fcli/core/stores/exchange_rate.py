@@ -1,9 +1,7 @@
 """Exchange rate store for database operations."""
 
-from typing import List, Dict, Optional
 from datetime import date
 
-from ..database import Database
 from ..models import ExchangeRate
 from .base import BaseStore
 
@@ -15,7 +13,7 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
     model_class = ExchangeRate
 
     @classmethod
-    def _row_to_model(cls, row: Dict) -> ExchangeRate:
+    def _row_to_model(cls, row: dict) -> ExchangeRate:
         return ExchangeRate(
             base_currency=row.get("from_currency", ""),
             quote_currency=row.get("to_currency", ""),
@@ -56,7 +54,7 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
             return True
 
     @classmethod
-    async def get_latest(cls, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
+    async def get_latest(cls, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """Get latest exchange rate for a currency pair."""
         if not cls._is_enabled():
             return None
@@ -79,7 +77,7 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
             return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
-    async def get_all_for_base(cls, base_currency: str) -> List[ExchangeRate]:
+    async def get_all_for_base(cls, base_currency: str) -> list[ExchangeRate]:
         """Get all latest rates for a base currency."""
         if not cls._is_enabled():
             return []
@@ -106,7 +104,7 @@ class ExchangeRateStore(BaseStore[ExchangeRate]):
             return [cls._row_to_model(dict(row)) for row in rows]
 
     @classmethod
-    async def get_history(cls, base_currency: str, quote_currency: str, days: int = 30) -> List[ExchangeRate]:
+    async def get_history(cls, base_currency: str, quote_currency: str, days: int = 30) -> list[ExchangeRate]:
         """Get historical rates for a currency pair."""
         if not cls._is_enabled():
             return []

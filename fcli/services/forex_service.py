@@ -4,9 +4,8 @@
 """
 
 import asyncio
-from datetime import datetime, date
-from typing import Optional, Dict, List, Any
 from dataclasses import dataclass
+from datetime import datetime
 
 from ..core.cache import cache
 from ..core.config import config
@@ -45,7 +44,7 @@ class ForexService:
         "RUB": "俄罗斯卢布",
     }
 
-    async def get_rate(self, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
+    async def get_rate(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """获取两个货币之间的汇率"""
         base_currency = base_currency.upper()
         quote_currency = quote_currency.upper()
@@ -81,14 +80,14 @@ class ForexService:
                     )
                     return rate
 
-            except Exception as e:
+            except Exception:
                 if not config.datasource.fallback_enabled:
                     raise
                 continue
 
         return None
 
-    async def _fetch_frankfurter(self, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
+    async def _fetch_frankfurter(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 Frankfurter API 获取汇率 (欧洲央行数据)"""
         # 使用配置化的URL
         url = f"{config.datasource.frankfurter_base}/latest"
@@ -114,7 +113,7 @@ class ForexService:
             source="Frankfurter (ECB)",
         )
 
-    async def _fetch_exchangerate(self, base_currency: str, quote_currency: str) -> Optional[ExchangeRate]:
+    async def _fetch_exchangerate(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 ExchangeRate-API 获取汇率"""
         # 使用免费的公开 API
         # 使用配置化的URL
@@ -137,7 +136,7 @@ class ForexService:
             source="ExchangeRate-API",
         )
 
-    async def get_all_rates(self, base_currency: str = "USD") -> Dict[str, ExchangeRate]:
+    async def get_all_rates(self, base_currency: str = "USD") -> dict[str, ExchangeRate]:
         """获取基准货币对所有常用货币的汇率"""
         base_currency = base_currency.upper()
         rates = {}
