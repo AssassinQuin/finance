@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import asyncio
-
 import typer
 
 from .commands.fx import app as fx_app
@@ -14,6 +12,7 @@ app = typer.Typer(
     help="FCLI - 命令行金融工具",
     add_completion=False,
     rich_markup_mode="rich",
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
@@ -26,23 +25,9 @@ def main(ctx: typer.Context):
     if ctx.invoked_subcommand is not None:
         return
 
-    from .core.container import container
-    from .services.watchlist_service import watchlist_service
-    from .utils.presenter import ConsolePresenter
+    from .commands.watchlist import query_quotes
 
-    async def _query_quotes():
-        try:
-            with ConsolePresenter.status("获取自选股行情..."):
-                assets = await watchlist_service.list_assets()
-                if not assets:
-                    ConsolePresenter.print_warning("自选股列表为空，使用 'fcli watchlist add <代码>' 添加")
-                    return
-                quotes = await container.quote_service.fetch_all(assets)
-            ConsolePresenter.print_quote_table(quotes)
-        finally:
-            await container.cleanup()
-
-    asyncio.run(_query_quotes())
+    query_quotes(ctx)
 
 
 app.add_typer(watchlist_app, name="watchlist", help="自选股管理 (add/rm/ls)")

@@ -6,7 +6,7 @@ import typer
 from ..services.gold_service import gold_service
 from ..utils.presenter import ConsolePresenter
 
-app = typer.Typer(help="黄金数据")
+app = typer.Typer(help="黄金数据", context_settings={"help_option_names": ["-h", "--help"]})
 
 
 @app.callback(invoke_without_command=True)

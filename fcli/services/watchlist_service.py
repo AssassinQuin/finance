@@ -29,5 +29,15 @@ class WatchlistService:
         """Remove asset from watchlist. Returns True if removed."""
         return await storage.remove(code.upper())
 
+    async def remove_assets(self, codes: list[str]) -> int:
+        """Remove multiple assets from watchlist. Returns count removed."""
+        if not codes:
+            return 0
+        removed = 0
+        for code in codes:
+            if await storage.remove(code.upper()):
+                removed += 1
+        return removed
+
 
 watchlist_service = WatchlistService()

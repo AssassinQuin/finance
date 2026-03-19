@@ -5,7 +5,7 @@ import typer
 from ..services.gpr_service import gpr_service
 from ..utils.presenter import ConsolePresenter
 
-app = typer.Typer(help="地缘政治风险指数")
+app = typer.Typer(help="地缘政治风险指数", context_settings={"help_option_names": ["-h", "--help"]})
 
 
 @app.callback(invoke_without_command=True)

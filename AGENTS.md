@@ -29,51 +29,6 @@ The project uses a **dimensional modeling** approach (star schema):
 **Legacy Compatibility:**
 - `gold_reserves` (VIEW) → maps to `fact_gold_reserve` + `dim_country`
 - `gpr_history` (VIEW) → maps to `fact_gpr`
-- `watchlist_assets` - User watchlist (unchanged)
-- `cache_entries` - UNLOGGED table for cache storage
-
-### Key Design Patterns
-
-1. **Database Singleton Pattern**
-   - `Database` class uses class methods with class-level state
-   - All Store classes access Database through class methods (no instances)
-   - Commands call `Database.init(config)` before operations
-   - Proper cleanup with `Database.close()` in finally blocks
-
-2. **Hybrid Cache Pattern**
-   - PostgreSQL (UNLOGGED table) priority with File fallback
-   - `HybridCache` checks PostgreSQL health before operations
-   - Fallback to file cache if database unavailable
-
-3. **Service Layer**
-   - Business logic in `fcli/services/`
-   - Data access in `fcli/core/stores/`
-   - Scrapers in `fcli/services/scrapers/`
-
-## Development Conventions
-
-### Database Operations
-
-```python
-# CORRECT: Use class methods, init before use
-async def command_handler():
-    try:
-        await Database.init(config)
-        # Use Store classes or Database class methods
-        data = await Database.fetch_all("SELECT * FROM fact_gold_reserve")
-    finally:
-        await Database.close()
-
-# INCORRECT: Creating Database instances
-db = Database()  # Never do this
-```
-
-### Store Classes
-
-All Store classes follow the same pattern:
-- Use `Database.fetch_all()`, `Database.fetch_one()`, `Database.execute()`
-- No instance state (class methods only)
-- Check `Database.is_enabled()` before database operations
 
 ### SQL Queries
 
@@ -98,6 +53,123 @@ SELECT * FROM gold_reserves
 - NOT Unix timestamps
 - Use `datetime.now(timezone.utc)` for current time
 
+## CLI Commands
+
+### Command Structure
+
+The CLI uses Typer with nested commands. All commands support `-h` as shortcut for `--help`:
+
+```bash
+# Global help
+python run.py -h
+python run.py --help
+
+# Subcommand help
+python run.py watchlist -h
+python run.py gold -h
+python run.py gpr -h
+python run.py fx -h
+```
+
+### Watchlist Commands
+
+```bash
+# Query watchlist quotes (default)
+python run.py watchlist
+python run.py watchlist -h
+
+# Add multiple assets (space-separated)
+python run.py watchlist add 600519
+python run.py watchlist add 600519 000858 AAPL
+
+# Remove multiple assets (space-separated)
+python run.py watchlist rm 600519
+python run.py watchlist rm 600519 000858 AAPL
+
+# List all watchlist assets
+python run.py watchlist ls
+
+# Clear watchlist (not implemented)
+python run.py watchlist clear
+```
+
+### Gold Commands
+
+```bash
+# Gold reserves (default)
+python run.py gold
+python run.py gold -u           # Force update
+python run.py gold -h           # Show help
+
+# Gold supply/demand
+python run.py gold supply
+```
+
+### GPR Commands
+
+```bash
+# GPR index (default)
+python run.py gpr
+python run.py gpr -u              # Force update
+python run.py gpr --no-chart      # No chart display
+python run.py gpr -h              # Show help
+
+# GPR history
+python run.py gpr history -m 60   # 60 months
+```
+
+### FX Commands
+
+```bash
+# USD rates (default)
+python run.py fx
+python run.py fx -h              # Show help
+
+# Specific rate
+python run.py fx USD CNY         # USD/CNY rate
+python run.py fx EUR             # EUR rates
+```
+
+### Watchlist Service
+
+The `WatchlistService` supports batch operations:
+
+```python
+from fcli.services.watchlist_service import watchlist_service
+
+# Add multiple assets
+count = await watchlist_service.add_assets(["600519", "000858", "AAPL"])
+
+# Remove multiple assets  
+count = await watchlist_service.remove_assets(["600519", "000858"])
+
+# List all assets
+assets = await watchlist_service.list_assets()
+```
+
+## Database Operations
+
+```python
+# CORRECT: Use class methods, init before use
+async def command_handler():
+    try:
+        await Database.init(config)
+        # Use Store classes or Database class methods
+        data = await Database.fetch_all("SELECT * FROM fact_gold_reserve")
+    finally:
+        await Database.close()
+
+# INCORRECT: Creating Database instances
+db = Database()  # Never do this
+```
+
+### Store Classes
+
+All Store classes follow the same pattern:
+- Use `Database.fetch_all()`, `Database.fetch_one()`, `Database.execute()`
+- No instance state (class methods only)
+- Check `Database.is_enabled()` before database operations
+
 ## Migration Notes
 
 ### V1 → V2 Migration
@@ -118,27 +190,45 @@ Consider updating Store classes to use V2 schema directly:
 
 All commands tested and working:
 ```bash
-python run.py           # Quote watchlist
-python run.py gold      # Gold reserves
-python run.py gpr       # Geopolitical risk
-python run.py fx        # Foreign exchange
-python run.py watchlist # Watchlist management
+python run.py -h              # Show help
+python run.py watchlist -h    # Watchlist help
+python run.py gold -h         # Gold help
+python run.py gpr -h          # GPR help
+python run.py fx -h           # FX help
 ```
 
 ## File Structure
 
 ```
 fcli/
-├── commands/       # CLI command handlers
+├── main.py              # CLI entry (Typer)
+├── commands/            # CLI command handlers
+│   ├── watchlist.py     # Watchlist commands (add/rm/ls/clear)
+│   ├── gold.py          # Gold commands (reserves/supply)
+│   ├── gpr.py           # GPR commands (index/history)
+│   └── fx.py            # FX commands (rate)
 ├── core/
-│   ├── models/     # Pydantic models
-│   ├── stores/     # Data access layer
-│   ├── cache.py    # Hybrid cache
-│   ├── database.py # Database singleton
-│   └── config.py   # Configuration
-├── services/       # Business logic
-│   └── scrapers/   # Data scrapers
-└── scripts/        # Utility scripts
+│   ├── models/          # Pydantic models
+│   ├── stores/          # Data access layer
+│   ├── cache.py         # Hybrid cache
+│   ├── database.py      # Database singleton
+│   └── config.py        # Configuration
+├── services/
+│   ├── quote_service.py
+│   ├── gold_service.py
+│   ├── forex_service.py
+│   ├── gpr_service.py
+│   ├── watchlist_service.py  # Watchlist service (batch ops)
+│   └── scrapers/        # Data scrapers
+├── infra/
+│   └── http_client.py   # HTTP client wrapper
+├── utils/
+│   ├── presenter.py     # Terminal output
+│   ├── logger.py        # Logging
+│   └── time_util.py     # Time utilities
+└── scripts/
+    ├── migrate.py       # Database migration
+    └── save_gold_reserves.py
 ```
 
 ## Common Tasks
