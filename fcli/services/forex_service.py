@@ -1,30 +1,21 @@
-"""
+﻿"""
 汇率查询服务
 支持 Frankfurter API (欧洲央行汇率) 和 ExchangeRate-API
 """
 
 import asyncio
-from dataclasses import dataclass
 from datetime import datetime
 
 from ..core.cache import cache
 from ..core.config import config
+from ..core.models import ExchangeRate
+from ..core.stores.exchange_rate_fact import ExchangeRateFactStore
 from ..infra.http_client import http_client
-
-
-@dataclass
-class ExchangeRate:
-    base_currency: str
-    quote_currency: str
-    rate: float
-    date: str
-    source: str
 
 
 class ForexService:
     """汇率查询服务"""
 
-    # 常用货币代码
     COMMON_CURRENCIES = {
         "USD": "美元",
         "CNY": "人民币",
@@ -49,13 +40,11 @@ class ForexService:
         base_currency = base_currency.upper()
         quote_currency = quote_currency.upper()
 
-        # 检查缓存
         cache_key = f"forex:{base_currency}:{quote_currency}"
         cached = await cache.async_get(cache_key)
         if cached:
             return ExchangeRate(**cached)
 
-        # 按优先级尝试不同的数据源
         for source in config.datasource.forex_priority:
             try:
                 if source == "frankfurter":
@@ -66,18 +55,18 @@ class ForexService:
                     continue
 
                 if rate:
-                    # 存入缓存
                     await cache.async_set(
                         cache_key,
                         {
                             "base_currency": rate.base_currency,
                             "quote_currency": rate.quote_currency,
                             "rate": rate.rate,
-                            "date": rate.date,
                             "source": rate.source,
+                            "update_time": rate.update_time.isoformat() if rate.update_time else None,
                         },
                         config.cache.forex_ttl,
                     )
+                    await ExchangeRateFactStore.save(rate)
                     return rate
 
             except Exception:
@@ -89,7 +78,6 @@ class ForexService:
 
     async def _fetch_frankfurter(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 Frankfurter API 获取汇率 (欧洲央行数据)"""
-        # 使用配置化的URL
         url = f"{config.datasource.frankfurter_base}/latest"
         params = {
             "from": base_currency,
@@ -105,18 +93,19 @@ class ForexService:
         if rate is None:
             return None
 
+        date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
+        update_time = datetime.strptime(date_str, "%Y-%m-%d")
+
         return ExchangeRate(
             base_currency=base_currency,
             quote_currency=quote_currency,
             rate=float(rate),
-            date=data.get("date", datetime.now().strftime("%Y-%m-%d")),
             source="Frankfurter (ECB)",
+            update_time=update_time,
         )
 
     async def _fetch_exchangerate(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 ExchangeRate-API 获取汇率"""
-        # 使用免费的公开 API
-        # 使用配置化的URL
         url = f"{config.datasource.exchangerate_base}/v6/latest/{base_currency}"
 
         data = await http_client.fetch(url)
@@ -132,8 +121,8 @@ class ForexService:
             base_currency=base_currency,
             quote_currency=quote_currency,
             rate=float(rate),
-            date=datetime.now().strftime("%Y-%m-%d"),
             source="ExchangeRate-API",
+            update_time=datetime.now(),
         )
 
     async def get_all_rates(self, base_currency: str = "USD") -> dict[str, ExchangeRate]:
@@ -141,7 +130,6 @@ class ForexService:
         base_currency = base_currency.upper()
         rates = {}
 
-        # 检查缓存
         cache_key = f"forex:all:{base_currency}"
         cached = cache.get(cache_key)
         if cached:
@@ -149,7 +137,6 @@ class ForexService:
                 rates[code] = ExchangeRate(**data)
             return rates
 
-        # 获取所有汇率
         tasks = []
         for currency in self.COMMON_CURRENCIES:
             if currency != base_currency:
@@ -161,14 +148,13 @@ class ForexService:
             if isinstance(result, ExchangeRate):
                 rates[result.quote_currency] = result
 
-        # 存入缓存
         cache_data = {
             code: {
                 "base_currency": rate.base_currency,
                 "quote_currency": rate.quote_currency,
                 "rate": rate.rate,
-                "date": rate.date,
                 "source": rate.source,
+                "update_time": rate.update_time.isoformat() if rate.update_time else None,
             }
             for code, rate in rates.items()
         }

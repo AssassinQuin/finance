@@ -1,4 +1,4 @@
-"""
+﻿"""
 Gold reserve service - IMF SDMX 3.0 API only.
 
 Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
@@ -16,7 +16,6 @@ from ..core.models import GoldReserve
 from ..core.models.gold_supply_demand import GoldSupplyDemand
 from ..core.stores import GoldReserveStore
 from ..core.stores.gold_supply_demand import GoldSupplyDemandStore
-from ..infra.http_client import http_client
 from .scrapers.imf_scraper import GOLD_COUNTRY_CODES, IMFScraper
 from .scrapers.wgc_scraper import WGCScraper
 
@@ -46,12 +45,7 @@ class GoldService:
         return await Database.init(config)
 
     async def close(self) -> None:
-        """Close HTTP client sessions"""
-        if self._imf_scraper:
-            await self._imf_scraper.close()
-        if self._wgc_scraper:
-            await self._wgc_scraper.close()
-        await http_client.close()
+        return None
 
     # ==================== 私有辅助方法 ====================
 

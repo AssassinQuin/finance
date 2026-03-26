@@ -1,8 +1,8 @@
-import asyncio
-from datetime import datetime
+﻿from datetime import datetime
 
 import typer
 
+from ..infra.http_client import run_async
 from ..services.gold_service import gold_service
 from ..utils.presenter import ConsolePresenter
 
@@ -21,7 +21,7 @@ def reserves(
         fcli gold              # 查询黄金储备
         fcli gold -u           # 强制更新数据
     """
-    asyncio.run(_reserves(update))
+    run_async(_reserves(update))
 
 
 async def _reserves(update: bool) -> None:
@@ -48,7 +48,7 @@ async def _reserves(update: bool) -> None:
 @app.command()
 def supply():
     """黄金供需数据"""
-    asyncio.run(_supply())
+    run_async(_supply())
 
 
 async def _supply():

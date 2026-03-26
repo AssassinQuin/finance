@@ -2,6 +2,7 @@
 
 from .asset import Asset, ExchangeRate, Quote
 from .base import AssetType, Market
+from .fund import Fund, FundDetail, FundScale, FundSearchResult, FundType, InvestType
 from .gold import GoldReserve
 from .gold_supply_demand import GoldSupplyDemand
 from .gpr import GPRHistory
@@ -15,6 +16,13 @@ __all__ = [
     "Asset",
     "Quote",
     "ExchangeRate",
+    # Fund models
+    "Fund",
+    "FundDetail",
+    "FundScale",
+    "FundSearchResult",
+    "FundType",
+    "InvestType",
     # Gold models
     "GoldReserve",
     "GoldSupplyDemand",

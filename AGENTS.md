@@ -1,4 +1,4 @@
-# AI Agent Development Guide
+﻿# AI Agent Development Guide
 
 ## Project Overview
 
@@ -170,6 +170,15 @@ All Store classes follow the same pattern:
 - No instance state (class methods only)
 - Check `Database.is_enabled()` before database operations
 
+**Available Stores:**
+- `GoldSupplyDemandStore` - V2 fact tables (fact_gold_supply_demand + dim_period + dim_metric)
+- `QuoteFactStore` - V2 fact tables (fact_quote + dim_asset) - not yet integrated in services
+- `ExchangeRateFactStore` - V2 fact tables (fact_fx_rate + dim_currency) - not yet integrated in services
+- `GoldReserveStore` - Legacy view (gold_reserves)
+- `GPRHistoryStore` - Legacy view (gpr_history)
+- `WatchlistAssetStore` - Direct table (watchlist_assets)
+- `FundStore` - Direct table (funds)
+
 ## Migration Notes
 
 ### V1 → V2 Migration
@@ -177,7 +186,8 @@ All Store classes follow the same pattern:
 - Completed: All V1 data migrated to V2 fact tables
 - Backup tables dropped: `gold_reserves_v1_backup`, `gpr_history_v1_backup`
 - Compatibility views created for zero-downtime migration
-- Store classes still use legacy table names (via views)
+- V1 Stores removed: `QuoteStore`, `ExchangeRateStore` (dead code)
+- GoldSupplyDemandStore migrated to V2 schema
 
 ### Future Refactoring
 
@@ -185,6 +195,7 @@ Consider updating Store classes to use V2 schema directly:
 - `GoldReserveStore` → query `fact_gold_reserve` + `dim_country`
 - `GPRHistoryStore` → query `fact_gpr`
 - Remove compatibility views after Store migration
+- Integrate `QuoteFactStore` and `ExchangeRateFactStore` into services
 
 ## Testing
 

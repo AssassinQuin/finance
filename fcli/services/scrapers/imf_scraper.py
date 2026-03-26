@@ -1,4 +1,4 @@
-"""
+﻿"""
 IMF SDMX 3.0 API Gold Reserves Scraper
 使用 IMF IRFCL (International Reserves and Foreign Currency Liquidity) 数据集
 """
@@ -10,21 +10,16 @@ from datetime import datetime, timedelta
 import aiohttp
 
 from fcli.core.config import config
+from fcli.infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
-# IMF SDMX 3.0 API配置
 IMF_API_BASE = "https://api.imf.org/external/sdmx/3.0"
-
-# 使用 International Liquidity (IL) 数据集获取黄金储备
-# RGV_REVS = Reserve Assets > Gold > Reserve Assets (Value)
-# FTO = Fine Troy Ounces (百万金衡盎司)
-# M = Monthly (月度)
 IL_DATAFLOW = "IMF.STA/IL"
 GOLD_INDICATOR = "RGV_REVS"
-GOLD_UNIT = "FTO"  # Fine Troy Ounces
-GOLD_FREQ = "M"  # Monthly
-# 主要黄金持有国ISO代码 (IMF格式) - 中文名称
+GOLD_UNIT = "FTO"
+GOLD_FREQ = "M"
+
 GOLD_COUNTRY_CODES = {
     "USA": "美国",
     "DEU": "德国",
@@ -86,35 +81,17 @@ class IMFScraper:
         }
         if self.api_key:
             self.headers["Ocp-Apim-Subscription-Key"] = self.api_key
-        self._session: aiohttp.ClientSession | None = None
-        self._session_lock = asyncio.Lock()
 
     def _get_api_key(self) -> str | None:
-        """获取IMF API密钥（可选）"""
         return config.api.imf_primary
 
     def _get_proxy(self) -> str | None:
-        """获取代理配置"""
         if config.proxy.enabled:
             return config.proxy.http
         return None
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """获取或创建带有代理支持的session"""
-        async with self._session_lock:
-            if self._session is None or self._session.closed:
-                connector = aiohttp.TCPConnector(ssl=False)
-                self._session = aiohttp.ClientSession(connector=connector, trust_env=True)
-            return self._session
-
     async def close(self):
-        """关闭session"""
-        if self._session and not self._session.closed:
-            connector = self._session.connector
-            await self._session.close()
-            if connector and not connector.closed:
-                await connector.close()
-            self._session = None
+        return None
 
     def _build_data_url(
         self,
@@ -122,27 +99,9 @@ class IMFScraper:
         start_period: str | None = None,
         end_period: str | None = None,
     ) -> str:
-        """
-        构建IMF SDMX 3.0数据查询URL
-
-        使用 International Liquidity (IL) 数据集获取黄金储备
-        示例: https://api.imf.org/external/sdmx/3.0/data/dataflow/IMF.STA/IL/+/SGP.RGV_REVS.FTO.M
-
-        Args:
-            country_code: 国家ISO代码 (如 USA, CHN, SGP)
-            start_period: 开始期间 (YYYY-MM 或 YYYY)
-            end_period: 结束期间 (YYYY-MM 或 YYYY)
-
-        Returns:
-            完整的API URL
-        """
-        # key格式: {COUNTRY}.{INDICATOR}.{UNIT}.{FREQ}
-        # 例如: SGP.RGV_REVS.FTO.M (新加坡, 黄金储备, 百万金衡盎司, 月度)
         key = f"{country_code}.{GOLD_INDICATOR}.{GOLD_UNIT}.{GOLD_FREQ}"
-
         url = f"{IMF_API_BASE}/data/dataflow/{IL_DATAFLOW}/+/{key}"
 
-        # 使用 c[TIME_PERIOD] 参数格式
         params = []
         if start_period:
             params.append(f"c[TIME_PERIOD]=ge:{start_period}")
@@ -160,53 +119,26 @@ class IMFScraper:
         start_period: str | None = None,
         end_period: str | None = None,
     ) -> dict:
-        """
-        获取指定国家的黄金储备数据
-
-        Args:
-            country_code: 国家ISO代码
-            start_period: 开始期间
-            end_period: 结束期间
-
-        Returns:
-            包含时间序列数据的字典 {period: value}
-        """
         url = self._build_data_url(country_code, start_period, end_period)
         proxy = self._get_proxy()
-        session = await self._get_session()
 
+        session = await http_client.get_session()
         timeout = aiohttp.ClientTimeout(total=60, connect=30)
 
-        async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
-            if response.status == 200:
-                data = await response.json()
-                return self._parse_response(data)
-            else:
+        try:
+            async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return self._parse_response(data)
                 text = await response.text()
                 raise Exception(f"IMF API error: {response.status} - {text}")
-
-        # Rate limiting: wait 0.3s between requests to avoid rate limiting
-        await asyncio.sleep(0.3)
+        finally:
+            await asyncio.sleep(0.3)
 
     def _parse_response(self, data: dict) -> dict:
-        """
-        解析IMF SDMX 3.0 JSON响应
-
-        SDMX 3.0 JSON结构:
-        {
-          "data": {
-            "dataSets": [{"series": {"0:0:0:0": {"observations": {"0": ["7072000", ...]}}}}],
-            "structures": [{"dimensions": {"observation": [{"id": "TIME_PERIOD", "values": [...]}]}}]
-          }
-        }
-
-        Returns:
-            {period: gold_tonnes} 黄金吨数
-        """
         result = {}
 
         try:
-            # SDMX 3.0: data.dataSets 和 data.structures
             data_sets = data.get("data", {}).get("dataSets", [])
             structures = data.get("data", {}).get("structures", [])
 
@@ -214,7 +146,6 @@ class IMFScraper:
                 logger.debug(f"No dataSets in response, keys: {list(data.keys())}")
                 return result
 
-            # 获取时间周期
             time_periods = []
             for structure in structures:
                 dimensions = structure.get("dimensions", {})
@@ -228,7 +159,6 @@ class IMFScraper:
                 logger.debug("No TIME_PERIOD dimension found")
                 return result
 
-            # 提取观测值
             for data_set in data_sets:
                 series = data_set.get("series", {})
 
@@ -240,26 +170,17 @@ class IMFScraper:
                             continue
 
                         try:
-                            # obs_value 格式: ["7072000", null, 0, null]
                             raw_value = obs_value[0] if isinstance(obs_value, list) else obs_value
                             if raw_value is None:
                                 continue
 
                             raw_value = float(raw_value)
-
-                            # 转换为吨数
-                            # IMF FTO 单位是百万金衡盎司 (Millions of Fine Troy Ounces)
-                            # 原始值已经是以千盎司为单位
-                            # 1 金衡盎司 = 0.0311034768 公斤
-                            # 转换: raw_value (千盎司) * 0.0311034768 / 1000 = 吨
-                            # 转换: raw_value * 0.0311034768 / 1000 = 吨
-                            troy_oz_to_kg = 0.0311034768  # 金衡盎司转公斤
-                            gold_tonnes = raw_value * troy_oz_to_kg / 1000  # 转为吨
+                            troy_oz_to_kg = 0.0311034768
+                            gold_tonnes = raw_value * troy_oz_to_kg / 1000
 
                             period_idx = int(obs_idx)
                             if period_idx < len(time_periods):
                                 period_raw = time_periods[period_idx]
-                                # 解析期间格式 (如 "2025-M01" -> "2025-01")
                                 if "-M" in str(period_raw):
                                     period = period_raw.replace("-M", "-")
                                 else:
@@ -277,16 +198,6 @@ class IMFScraper:
         return result
 
     async def get_latest_gold_reserve(self, country_code: str) -> dict | None:
-        """
-        获取最新一个月的黄金储备
-
-        Args:
-            country_code: 国家ISO代码
-
-        Returns:
-            {"period": "2024-12", "value": 8133.5} 或 None
-        """
-        # 获取最近12个月的数据，取最新
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365)
 
@@ -298,7 +209,6 @@ class IMFScraper:
         if not data:
             return None
 
-        # 取最新的一个月
         latest_period = max(data.keys())
         return {
             "period": latest_period,
@@ -308,9 +218,6 @@ class IMFScraper:
         }
 
     async def get_gold_reserves_history(self, country_code: str, years: int = 10) -> dict:
-        """
-        获取指定国家近N年的月度黄金储备历史数据
-        """
         end_date = datetime.now()
         start_date = end_date - timedelta(days=years * 365)
 
@@ -323,9 +230,6 @@ class IMFScraper:
         if data:
             sample = list(data.items())[:3]
             logger.debug(f"Sample: {sample}")
-        if data:
-            sample = list(data.items())[:3]
-
 
         return {
             "country_code": country_code,
@@ -336,15 +240,6 @@ class IMFScraper:
         }
 
     async def batch_get_latest_reserves(self, country_codes: list[str] | None = None) -> list[dict]:
-        """
-        批量获取多国最新黄金储备
-
-        Args:
-            country_codes: 国家代码列表，默认为所有主要国家
-
-        Returns:
-            [{"country_code": "USA", "period": "2024-12", "value": 8133.5}, ...]
-        """
         if country_codes is None:
             country_codes = list(GOLD_COUNTRY_CODES.keys())
 
@@ -352,7 +247,6 @@ class IMFScraper:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 过滤成功结果
         valid_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
@@ -360,22 +254,11 @@ class IMFScraper:
             elif result:
                 valid_results.append(result)
 
-        # 按储备量降序排序
         valid_results.sort(key=lambda x: x.get("value", 0), reverse=True)
 
         return valid_results
 
     async def batch_get_history(self, country_codes: list[str] | None = None, years: int = 10) -> list[dict]:
-        """
-        批量获取多国近N年月度黄金储备历史
-
-        Args:
-            country_codes: 国家代码列表
-            years: 年数
-
-        Returns:
-            [{"country_code": "USA", "data": {...}}, ...]
-        """
         if country_codes is None:
             country_codes = list(GOLD_COUNTRY_CODES.keys())
 
@@ -393,38 +276,21 @@ class IMFScraper:
         return valid_results
 
 
-# 便捷函数
 async def get_latest_gold(country_code: str) -> dict | None:
-    """获取单个国家最新黄金储备"""
     scraper = IMFScraper()
-    try:
-        return await scraper.get_latest_gold_reserve(country_code)
-    finally:
-        await scraper.close()
+    return await scraper.get_latest_gold_reserve(country_code)
 
 
 async def get_all_latest_gold() -> list[dict]:
-    """获取所有主要国家最新黄金储备"""
     scraper = IMFScraper()
-    try:
-        return await scraper.batch_get_latest_reserves()
-    finally:
-        await scraper.close()
+    return await scraper.batch_get_latest_reserves()
 
 
 async def get_gold_history(country_code: str, years: int = 10) -> dict:
-    """获取单个国家黄金储备历史"""
     scraper = IMFScraper()
-    try:
-        return await scraper.get_gold_reserves_history(country_code, years)
-    finally:
-        await scraper.close()
+    return await scraper.get_gold_reserves_history(country_code, years)
 
 
 async def get_all_gold_history(years: int = 10) -> list[dict]:
-    """获取所有主要国家黄金储备历史"""
     scraper = IMFScraper()
-    try:
-        return await scraper.batch_get_history(years=years)
-    finally:
-        await scraper.close()
+    return await scraper.batch_get_history(years=years)

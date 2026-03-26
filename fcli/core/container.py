@@ -1,10 +1,10 @@
-"""Dependency injection container.
+﻿"""Dependency injection container.
 
 Centralized management of all service dependencies for decoupling and testability.
 """
 
 
-from ..infra.http_client import HttpClient
+from ..infra.http_client import HttpClient, http_client
 from .cache import HybridCache
 from .cache_strategy import AssetTypeCacheStrategy, ICacheStrategy
 from .config import Settings, config
@@ -53,7 +53,7 @@ class Container:
     @property
     def http_client(self) -> HttpClient:
         if self._http_client is None:
-            self._http_client = HttpClient()
+            self._http_client = http_client
         return self._http_client
 
     @property

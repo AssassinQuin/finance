@@ -1,4 +1,4 @@
-"""
+﻿"""
 Import WGC Gold Supply/Demand data from Excel file to database.
 
 Usage:
@@ -18,11 +18,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import logging
 
 from fcli.core.models.gold_supply_demand import GoldSupplyDemand
 from fcli.core.stores.gold_supply_demand import GoldSupplyDemandStore
+from fcli.infra.http_client import run_async
 from fcli.services.scrapers.wgc_scraper import QuarterlySupplyDemand, wgc_scraper
 
 logging.basicConfig(
@@ -190,7 +190,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    asyncio.run(main_async(args))
+    run_async(main_async(args))
 
 
 if __name__ == "__main__":

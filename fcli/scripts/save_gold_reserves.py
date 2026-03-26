@@ -1,4 +1,4 @@
-"""
+﻿"""
 Save gold reserves history to database using IMF SDMX 3.0 API.
 
 Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
@@ -11,23 +11,14 @@ Usage:
 """
 
 import argparse
-import asyncio
 import logging
-import sys
 from datetime import date, datetime
-from pathlib import Path
-
-# 支持直接运行脚本： 自动添加项目根目录到 sys.path
-_script_dir = Path(__file__).resolve().parent.parent
-_project_root = _script_dir.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
 
 from fcli.core.config import config
 from fcli.core.database import Database
 from fcli.core.models import GoldReserve
 from fcli.core.stores import GoldReserveStore
-from fcli.infra.http_client import http_client
+from fcli.infra.http_client import run_async
 from fcli.services.scrapers.imf_scraper import IMFScraper
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -296,10 +287,8 @@ async def main():
         logger.error(f"Error: {e}")
         raise
     finally:
-        await scraper.close()
         await Database.close()
-        await http_client.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_async(main())

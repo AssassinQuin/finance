@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 V2 数据库迁移脚本
 
@@ -17,53 +17,50 @@ V2 数据库迁移脚本
     python -m fcli.scripts.migrate_v2
 """
 
-import asyncio
 import sys
-from pathlib import Path
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from fcli.core.config import Settings
 from fcli.core.database import Database
+from fcli.infra.http_client import run_async
 
 
 async def create_v2_schema():
-    """创建 V2 表结构"""
-    print("📦 Creating V2 schema...")
+    """创建 V2 表结构（如果不存在）"""
+    print("📦 Checking V2 schema...")
 
-    sql_file = Path(__file__).parent.parent.parent / "init_v2.sql"
-    with open(sql_file) as f:
-        sql = f.read()
+    required_tables = [
+        "dim_country",
+        "dim_currency",
+        "dim_data_source",
+        "dim_asset",
+        "dim_period",
+        "dim_metric",
+        "fact_gold_reserve",
+        "fact_gpr",
+        "fact_fx_rate",
+        "fact_quote",
+        "fact_gold_supply_demand",
+    ]
 
-    import re
+    existing = await Database.fetch_all(
+        """
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = ANY($1)
+        """,
+        required_tables,
+    )
+    existing_names = {row["table_name"] for row in existing}
 
-    current_stmt = []
-    statements = []
+    if len(existing_names) == len(required_tables):
+        print("  ✓ V2 schema already exists, skipping creation")
+        return
 
-    for line in sql.split("\n"):
-        if line.strip().startswith("--"):
-            continue
-
-        current_stmt.append(line)
-
-        if ";" in line:
-            stmt = "\n".join(current_stmt).strip()
-            if stmt and stmt != ";":
-                statements.append(stmt)
-            current_stmt = []
-
-    for stmt in statements:
-        try:
-            await Database.execute(stmt)
-        except Exception as e:
-            error_msg = str(e)
-            if "already exists" in error_msg.lower() or "does not exist" in error_msg.lower():
-                print(f"  ⚠️  Warning: {error_msg}")
-            else:
-                raise
-
-    print("  ✓ V2 schema created")
+    missing = set(required_tables) - existing_names
+    print(f"  ⚠️  Missing tables: {missing}")
+    print("  ❌ V2 schema incomplete. Please run full migration from V1.")
+    print("     This script is designed for one-time V1→V2 migration.")
+    print("     If you need to recreate the schema, restore init_v2.sql first.")
+    sys.exit(1)
 
 
 async def populate_dimensions():
@@ -146,7 +143,7 @@ async def migrate_gold_reserves():
     source_id = source["id"] if source else None
 
     # Migrate data
-    result = await Database.execute(
+    await Database.execute(
         f"""
         INSERT INTO fact_gold_reserve (country_id, report_date, gold_tonnes, source_id, fetched_at)
         SELECT
@@ -175,7 +172,7 @@ async def migrate_gpr():
     source_id = source["id"] if source else None
 
     # Migrate data
-    result = await Database.execute(
+    await Database.execute(
         f"""
         INSERT INTO fact_gpr (country_code, report_date, gpr_index, source_id)
         SELECT
@@ -247,27 +244,26 @@ async def main():
     await Database.init(settings)
 
     try:
-        # Step 1: Create V2 schema
         await create_v2_schema()
 
-        # Step 2: Populate dimensions
-        await populate_dimensions()
+        v1_exists = await Database.fetch_one(
+            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'gold_reserves')"
+        )
 
-        # Step 3: Migrate fact data
+        if not v1_exists or not v1_exists["exists"]:
+            print("\n✅ V2 schema is ready. No V1 tables to migrate.")
+            print("   Migration was already completed or this is a fresh install.")
+            return
+
+        print("\n📋 V1 tables detected. Starting data migration...")
+
+        await populate_dimensions()
         await migrate_gold_reserves()
         await migrate_gpr()
-
-        # Step 4: Backup old tables
         await backup_old_tables()
-
-        # Step 5: Verify
         await verify_migration()
 
         print("\n✅ Migration completed successfully!")
-        print("\nNext steps:")
-        print("1. Update Store classes to use V2 tables")
-        print("2. Test all commands")
-        print("3. Drop backup tables after verification: DROP TABLE gold_reserves_v1_backup, gpr_history_v1_backup;")
 
     except Exception as e:
         print(f"\n❌ Migration failed: {e}")
@@ -280,4 +276,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_async(main())

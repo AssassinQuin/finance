@@ -5,6 +5,7 @@ import typer
 from .commands.fx import app as fx_app
 from .commands.gold import app as gold_app
 from .commands.gpr import app as gpr_app
+from .commands.market import app as market_app
 from .commands.watchlist import app as watchlist_app
 
 app = typer.Typer(
@@ -31,6 +32,7 @@ def main(ctx: typer.Context):
 
 
 app.add_typer(watchlist_app, name="watchlist", help="自选股管理 (add/rm/ls)")
+app.add_typer(market_app, name="market", help="基金市场 (search/detail)")
 app.add_typer(gold_app, name="gold", help="黄金数据 (reserves/supply)")
 app.add_typer(gpr_app, name="gpr", help="地缘政治风险指数 (index/history)")
 app.add_typer(fx_app, name="fx", help="汇率查询 (rate/list)")

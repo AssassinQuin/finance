@@ -1,7 +1,6 @@
-import asyncio
+﻿import typer
 
-import typer
-
+from ..infra.http_client import run_async
 from ..services.forex_service import forex_service
 from ..utils.presenter import ConsolePresenter
 
@@ -20,7 +19,7 @@ def rate(
         fcli fx USD CNY      # 查询 USD/CNY 汇率
         fcli fx EUR          # 查询 EUR 汇率
     """
-    asyncio.run(_rate(base, quote))
+    run_async(_rate(base, quote))
 
 
 async def _rate(base: str, quote: str | None) -> None:

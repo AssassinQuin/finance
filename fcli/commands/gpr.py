@@ -1,7 +1,6 @@
-import asyncio
+﻿import typer
 
-import typer
-
+from ..infra.http_client import run_async
 from ..services.gpr_service import gpr_service
 from ..utils.presenter import ConsolePresenter
 
@@ -22,7 +21,7 @@ def index(
         fcli gpr -u           # 强制更新数据
         fcli gpr --no-chart   # 不显示图表
     """
-    asyncio.run(_index(update, chart))
+    run_async(_index(update, chart))
 
 
 async def _index(update: bool, chart: bool) -> None:
@@ -54,7 +53,7 @@ def history(
     months: int = typer.Option(120, "-m", "--months", help="显示月数"),
 ):
     """GPR 历史趋势"""
-    asyncio.run(_history(months))
+    run_async(_history(months))
 
 
 async def _history(months: int) -> None:

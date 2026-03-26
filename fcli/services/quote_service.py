@@ -1,4 +1,4 @@
-"""Quote Service - 行情查询服务
+﻿"""Quote Service - 行情查询服务
 
 重构说明:
 - 使用依赖注入模式，通过构造函数传入依赖
@@ -16,6 +16,7 @@ from ..core.config import Settings
 from ..core.interfaces.cache import ICache
 from ..core.interfaces.source import IQuoteSource
 from ..core.models import Asset, AssetType, Market, Quote
+from ..core.stores.quote_fact import QuoteFactStore
 from ..infra.http_client import HttpClient
 from ..utils.logger import LogContext
 from ..utils.logger import quote_logger as logger
@@ -82,9 +83,9 @@ class QuoteService:
                     continue
 
                 if quote:
-                    # 使用基于资产类型的缓存策略
                     ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
                     await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
+                    await QuoteFactStore.save(quote)
                     logger.info(
                         "Quote fetched",
                         LogContext(
