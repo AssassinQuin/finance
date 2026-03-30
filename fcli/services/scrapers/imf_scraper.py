@@ -1,97 +1,141 @@
-﻿"""
-IMF SDMX 3.0 API Gold Reserves Scraper
-使用 IMF IRFCL (International Reserves and Foreign Currency Liquidity) 数据集
 """
+IMF SDMX 3.0 API Gold Reserves Scraper.
+
+Uses IMF IRFCL (International Reserves and Foreign Currency Liquidity) dataset.
+API Documentation: https://data.imf.org/
+
+Unit Conversion:
+  - IMF reports gold reserves in troy ounces
+  - 1 troy ounce = 0.0311034768 kg (exact)
+  - 1 tonne = 1000 kg
+  - Therefore: troy_oz × 0.0311034768 / 1000 = tonnes
+"""
+
+from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import socket
 from datetime import datetime, timedelta
 
 import aiohttp
 
 from fcli.core.config import config
+from fcli.core.models.gold import GoldReserve
 from fcli.infra.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
-IMF_API_BASE = "https://api.imf.org/external/sdmx/3.0"
-IL_DATAFLOW = "IMF.STA/IL"
-GOLD_INDICATOR = "RGV_REVS"
-GOLD_UNIT = "FTO"
-GOLD_FREQ = "M"
+# Errors that indicate non-transient network issues (DNS, connection refused, etc.)
+# Retrying these is pointless — they won't resolve within seconds.
+DNS_ERROR_MARKERS = (
+    "DNS server returned",
+    "Name or service not known",
+    "nodename nor servname",
+    "getaddrinfo failed",
+    "Temporary failure in name resolution",
+    "No route to host",
+)
 
-GOLD_COUNTRY_CODES = {
-    "USA": "美国",
-    "DEU": "德国",
-    "IMF": "国际货币基金组织",
-    "ITA": "意大利",
-    "FRA": "法国",
-    "RUS": "俄罗斯",
-    "CHN": "中国",
-    "CHE": "瑞士",
-    "JPN": "日本",
-    "IND": "印度",
-    "TUR": "土耳其",
-    "NLD": "荷兰",
-    "SAU": "沙特阿拉伯",
-    "GBR": "英国",
-    "LBN": "黎巴嫩",
-    "KAZ": "哈萨克斯坦",
-    "PRT": "葡萄牙",
-    "UZB": "乌兹别克斯坦",
-    "AUT": "奥地利",
-    "SGP": "新加坡",
-    "KOR": "韩国",
-    "BRA": "巴西",
-    "BEL": "比利时",
-    "ARG": "阿根廷",
-    "THA": "泰国",
-    "VEN": "委内瑞拉",
-    "MEX": "墨西哥",
-    "SWE": "瑞典",
-    "POL": "波兰",
-    "AUS": "澳大利亚",
-    "PHL": "菲律宾",
-    "IDN": "印度尼西亚",
-    "MYS": "马来西亚",
-    "CAN": "加拿大",
-    "ESP": "西班牙",
-    "FIN": "芬兰",
-    "NOR": "挪威",
-    "DNK": "丹麦",
-    "CZE": "捷克",
-    "HUN": "匈牙利",
-    "ROU": "罗马尼亚",
-    "GRC": "希腊",
-    "ISR": "以色列",
-    "EGY": "埃及",
-    "ZAF": "南非",
-    "NGA": "尼日利亚",
-    "VNM": "越南",
-}
+
+def _is_dns_error(exc: BaseException) -> bool:
+    """Check if an exception is caused by a DNS resolution failure."""
+    if isinstance(exc, (socket.gaierror, OSError)):
+        return True
+    msg = str(exc).lower()
+    return any(marker.lower() in msg for marker in DNS_ERROR_MARKERS)
 
 
 class IMFScraper:
-    """IMF SDMX 3.0 API 黄金储备爬虫"""
+    """IMF SDMX 3.0 API Gold Reserves Scraper with exponential backoff."""
 
-    def __init__(self):
+    IMF_API_BASE = "https://api.imf.org/external/sdmx/3.0"
+    IL_DATAFLOW = "IMF.STA/IL"
+    GOLD_INDICATOR = "RGV_REVS"
+    GOLD_UNIT = "FTO"
+    GOLD_FREQ = "M"
+
+    TROY_OZ_TO_KG = 0.0311034768
+    KG_TO_TONNES = 1000
+
+    BASE_DELAY = 0.5
+    MAX_DELAY = 30.0
+    MAX_RETRIES = 3
+    DNS_FAIL_THRESHOLD = 3  # consecutive DNS failures before circuit breaks
+
+    GOLD_COUNTRY_CODES: dict[str, str] = {
+        "USA": "美国",
+        "DEU": "德国",
+        "IMF": "国际货币基金组织",
+        "ITA": "意大利",
+        "FRA": "法国",
+        "RUS": "俄罗斯",
+        "CHN": "中国",
+        "CHE": "瑞士",
+        "JPN": "日本",
+        "IND": "印度",
+        "TUR": "土耳其",
+        "NLD": "荷兰",
+        "SAU": "沙特阿拉伯",
+        "GBR": "英国",
+        "LBN": "黎巴嫩",
+        "KAZ": "哈萨克斯坦",
+        "PRT": "葡萄牙",
+        "UZB": "乌兹别克斯坦",
+        "AUT": "奥地利",
+        "SGP": "新加坡",
+        "KOR": "韩国",
+        "BRA": "巴西",
+        "BEL": "比利时",
+        "ARG": "阿根廷",
+        "THA": "泰国",
+        "VEN": "委内瑞拉",
+        "MEX": "墨西哥",
+        "SWE": "瑞典",
+        "POL": "波兰",
+        "AUS": "澳大利亚",
+        "PHL": "菲律宾",
+        "IDN": "印度尼西亚",
+        "MYS": "马来西亚",
+        "CAN": "加拿大",
+        "ESP": "西班牙",
+        "FIN": "芬兰",
+        "NOR": "挪威",
+        "DNK": "丹麦",
+        "CZE": "捷克",
+        "HUN": "匈牙利",
+        "ROU": "罗马尼亚",
+        "GRC": "希腊",
+        "ISR": "以色列",
+        "EGY": "埃及",
+        "ZAF": "南非",
+        "NGA": "尼日利亚",
+        "VNM": "越南",
+    }
+
+    def __init__(self, country_codes: dict[str, str] | None = None):
         self.api_key = self._get_api_key()
-        self.headers = {
-            "Accept": "application/json",
-        }
+        self.headers = {"Accept": "application/json"}
         if self.api_key:
             self.headers["Ocp-Apim-Subscription-Key"] = self.api_key
+        self.country_codes = country_codes or self.GOLD_COUNTRY_CODES
+        self._consecutive_dns_failures = 0
+        self._dns_circuit_open = False
 
     def _get_api_key(self) -> str | None:
         return config.api.imf_primary
 
-    def _get_proxy(self) -> str | None:
-        if config.proxy.enabled:
-            return config.proxy.http
-        return None
+    def _get_proxy(self, url: str) -> str | None:
+        """Get proxy for URL, matching http_client's proxy selection logic."""
+        if not config.proxy.enabled:
+            return None
+        if url.startswith("https://"):
+            return config.proxy.https or config.proxy.http
+        return config.proxy.http
 
     async def close(self):
-        return None
+        pass
 
     def _build_data_url(
         self,
@@ -99,8 +143,8 @@ class IMFScraper:
         start_period: str | None = None,
         end_period: str | None = None,
     ) -> str:
-        key = f"{country_code}.{GOLD_INDICATOR}.{GOLD_UNIT}.{GOLD_FREQ}"
-        url = f"{IMF_API_BASE}/data/dataflow/{IL_DATAFLOW}/+/{key}"
+        key = f"{country_code}.{self.GOLD_INDICATOR}.{self.GOLD_UNIT}.{self.GOLD_FREQ}"
+        url = f"{self.IMF_API_BASE}/data/dataflow/{self.IL_DATAFLOW}/+/{key}"
 
         params = []
         if start_period:
@@ -113,40 +157,78 @@ class IMFScraper:
 
         return url
 
-    async def fetch_gold_reserves(
-        self,
-        country_code: str,
-        start_period: str | None = None,
-        end_period: str | None = None,
-    ) -> dict:
-        url = self._build_data_url(country_code, start_period, end_period)
-        proxy = self._get_proxy()
+    async def _request_with_backoff(self, url: str) -> dict:
+        if self._dns_circuit_open:
+            raise aiohttp.ClientError("DNS circuit breaker open — skipping request")
 
-        session = await http_client.get_session()
-        timeout = aiohttp.ClientTimeout(total=60, connect=30)
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                session = await http_client.get_session()
+                timeout = aiohttp.ClientTimeout(total=60, connect=30)
+                proxy = self._get_proxy(url)
 
-        try:
-            async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_response(data)
-                text = await response.text()
-                raise Exception(f"IMF API error: {response.status} - {text}")
-        finally:
-            await asyncio.sleep(0.3)
+                async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
+                    if response.status == 200:
+                        self._consecutive_dns_failures = 0
+                        return await response.json()
+                    if response.status == 429:
+                        retry_after = float(response.headers.get("Retry-After", "5"))
+                        await asyncio.sleep(retry_after)
+                        continue
+                    text = await response.text()
+                    raise aiohttp.ClientError(f"IMF API error: {response.status} - {text}")
 
-    def _parse_response(self, data: dict) -> dict:
-        result = {}
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+                if _is_dns_error(e):
+                    self._consecutive_dns_failures += 1
+                    if self._consecutive_dns_failures >= self.DNS_FAIL_THRESHOLD:
+                        self._dns_circuit_open = True
+                        logger.error(
+                            "DNS failed %d times consecutively — circuit breaker open, skipping remaining requests",
+                            self._consecutive_dns_failures,
+                        )
+                    raise aiohttp.ClientError(f"DNS failure (no retry): {e}") from e
+
+                if attempt == self.MAX_RETRIES - 1:
+                    raise
+                delay = min(
+                    self.BASE_DELAY * (2**attempt) + random.uniform(0, 1),
+                    self.MAX_DELAY,
+                )
+                logger.warning("Request failed, retrying in %.1fs: %s", delay, e)
+                await asyncio.sleep(delay)
+
+        raise aiohttp.ClientError("Max retries exceeded")
+
+    def _convert_to_tonnes(self, troy_ounces: float) -> float:
+        """
+        Convert troy ounces to tonnes.
+
+        Unit conversion chain:
+          troy_oz × TROY_OZ_TO_KG = kg
+          kg / KG_TO_TONNES = tonnes
+        """
+        kg = troy_ounces * self.TROY_OZ_TO_KG
+        return kg / self.KG_TO_TONNES
+
+    def _parse_response(self, data: dict, country_code: str) -> list[tuple[str, float]]:
+        """
+        Parse IMF SDMX response into (period, tonnes) pairs.
+
+        Returns:
+            List of (period_str, gold_tonnes) tuples
+        """
+        result: list[tuple[str, float]] = []
 
         try:
             data_sets = data.get("data", {}).get("dataSets", [])
             structures = data.get("data", {}).get("structures", [])
 
             if not data_sets:
-                logger.debug(f"No dataSets in response, keys: {list(data.keys())}")
+                logger.debug(f"No dataSets in response for {country_code}")
                 return result
 
-            time_periods = []
+            time_periods: list[str] = []
             for structure in structures:
                 dimensions = structure.get("dimensions", {})
                 obs_dims = dimensions.get("observation", [])
@@ -156,7 +238,7 @@ class IMFScraper:
                         break
 
             if not time_periods:
-                logger.debug("No TIME_PERIOD dimension found")
+                logger.debug(f"No TIME_PERIOD dimension found for {country_code}")
                 return result
 
             for data_set in data_sets:
@@ -175,8 +257,7 @@ class IMFScraper:
                                 continue
 
                             raw_value = float(raw_value)
-                            troy_oz_to_kg = 0.0311034768
-                            gold_tonnes = raw_value * troy_oz_to_kg / 1000
+                            gold_tonnes = self._convert_to_tonnes(raw_value)
 
                             period_idx = int(obs_idx)
                             if period_idx < len(time_periods):
@@ -187,86 +268,168 @@ class IMFScraper:
                                     period = period_raw
 
                                 if gold_tonnes > 0:
-                                    result[period] = round(gold_tonnes, 2)
+                                    result.append((period, round(gold_tonnes, 2)))
 
                         except (ValueError, TypeError, IndexError):
                             continue
 
         except Exception as e:
-            logger.debug(f"Error parsing IMF response: {e}")
+            logger.debug(f"Error parsing IMF response for {country_code}: {e}")
 
         return result
 
-    async def get_latest_gold_reserve(self, country_code: str) -> dict | None:
+    async def fetch_gold_reserves(
+        self,
+        country_code: str,
+        start_period: str | None = None,
+        end_period: str | None = None,
+    ) -> list[GoldReserve]:
+        """
+        Fetch gold reserves for a country.
+
+        Args:
+            country_code: ISO 3-letter country code
+            start_period: Start date (YYYY-MM format)
+            end_period: End date (YYYY-MM format)
+
+        Returns:
+            List of GoldReserve objects
+        """
+        url = self._build_data_url(country_code, start_period, end_period)
+
+        try:
+            data = await self._request_with_backoff(url)
+            parsed = self._parse_response(data, country_code)
+
+            country_name = self.country_codes.get(country_code, country_code)
+            fetch_time = datetime.now()
+
+            reserves = []
+            for period, tonnes in parsed:
+                try:
+                    report_date = datetime.strptime(period, "%Y-%m").date()
+                except ValueError:
+                    report_date = datetime.now().date()
+
+                reserves.append(
+                    GoldReserve(
+                        country_code=country_code,
+                        country_name=country_name,
+                        amount_tonnes=tonnes,
+                        report_date=report_date,
+                        data_source="IMF",
+                        fetch_time=fetch_time,
+                    )
+                )
+
+            return reserves
+
+        except Exception as e:
+            logger.error(f"Failed to fetch gold reserves for {country_code}: {e}")
+            return []
+
+    async def get_latest_gold_reserve(self, country_code: str) -> GoldReserve | None:
+        """Get the most recent gold reserve for a country."""
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365)
 
         start_period = start_date.strftime("%Y-%m")
         end_period = end_date.strftime("%Y-%m")
 
-        data = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
+        reserves = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
 
-        if not data:
+        if not reserves:
             return None
 
-        latest_period = max(data.keys())
-        return {
-            "period": latest_period,
-            "value": data[latest_period],
-            "country_code": country_code,
-            "country_name": GOLD_COUNTRY_CODES.get(country_code, country_code),
-        }
+        return max(reserves, key=lambda r: r.report_date or datetime.now().date())
 
-    async def get_gold_reserves_history(self, country_code: str, years: int = 10) -> dict:
+    async def get_gold_reserves_history(self, country_code: str, years: int = 10) -> list[GoldReserve]:
+        """Get historical gold reserves for a country."""
         end_date = datetime.now()
         start_date = end_date - timedelta(days=years * 365)
 
         start_period = start_date.strftime("%Y-%m")
         end_period = end_date.strftime("%Y-%m")
 
-        data = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
+        reserves = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
 
-        logger.debug(f"{country_code}: fetched {len(data)} periods")
-        if data:
-            sample = list(data.items())[:3]
-            logger.debug(f"Sample: {sample}")
+        logger.debug(f"{country_code}: fetched {len(reserves)} periods")
+        return reserves
 
-        return {
-            "country_code": country_code,
-            "country_name": GOLD_COUNTRY_CODES.get(country_code, country_code),
-            "start_period": start_period,
-            "end_period": end_period,
-            "data": data,
-        }
-
-    async def batch_get_latest_reserves(self, country_codes: list[str] | None = None) -> list[dict]:
+    async def batch_get_latest_reserves(self, country_codes: list[str] | None = None) -> list[GoldReserve]:
+        """Get latest reserves for multiple countries."""
         if country_codes is None:
-            country_codes = list(GOLD_COUNTRY_CODES.keys())
+            country_codes = list(self.country_codes.keys())
 
         tasks = [self.get_latest_gold_reserve(code) for code in country_codes]
-
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        valid_results = []
+        valid_results: list[GoldReserve] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.debug(f"Error fetching {country_codes[i]}: {result}")
             elif result:
                 valid_results.append(result)
 
-        valid_results.sort(key=lambda x: x.get("value", 0), reverse=True)
+        valid_results.sort(key=lambda r: r.amount_tonnes, reverse=True)
+        return valid_results
+
+    async def batch_get_history(
+        self, country_codes: list[str] | None = None, years: int = 10
+    ) -> list[list[GoldReserve]]:
+        """Get historical reserves for multiple countries."""
+        if country_codes is None:
+            country_codes = list(self.country_codes.keys())
+
+        tasks = [self.get_gold_reserves_history(code, years) for code in country_codes]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        valid_results: list[list[GoldReserve]] = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.debug(f"Error fetching history for {country_codes[i]}: {result}")
+            elif result:
+                valid_results.append(result)
 
         return valid_results
 
-    async def batch_get_history(self, country_codes: list[str] | None = None, years: int = 10) -> list[dict]:
+    async def get_gold_reserves_history_dict(self, country_code: str, years: int = 10) -> dict:
+        """Get historical reserves as dict (backward compatible)."""
+        reserves = await self.get_gold_reserves_history(country_code, years)
+        if not reserves:
+            return {
+                "country_code": country_code,
+                "country_name": self.country_codes.get(country_code, country_code),
+                "data": {},
+            }
+        return {
+            "country_code": country_code,
+            "country_name": reserves[0].country_name if reserves else country_code,
+            "data": {r.report_date.strftime("%Y-%m"): r.amount_tonnes for r in reserves if r.report_date},
+        }
+
+    async def batch_get_latest_reserves_dict(self, country_codes: list[str] | None = None) -> list[dict]:
+        """Get latest reserves as list of dicts (backward compatible)."""
+        reserves = await self.batch_get_latest_reserves(country_codes)
+        return [
+            {
+                "country_code": r.country_code,
+                "country_name": r.country_name,
+                "value": r.amount_tonnes,
+                "period": r.report_date.strftime("%Y-%m") if r.report_date else "",
+            }
+            for r in reserves
+        ]
+
+    async def batch_get_history_dict(self, country_codes: list[str] | None = None, years: int = 10) -> list[dict]:
+        """Get historical reserves as list of dicts (backward compatible)."""
         if country_codes is None:
-            country_codes = list(GOLD_COUNTRY_CODES.keys())
+            country_codes = list(self.country_codes.keys())
 
-        tasks = [self.get_gold_reserves_history(code, years) for code in country_codes]
-
+        tasks = [self.get_gold_reserves_history_dict(code, years) for code in country_codes]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        valid_results = []
+        valid_results: list[dict] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.debug(f"Error fetching history for {country_codes[i]}: {result}")
@@ -276,21 +439,20 @@ class IMFScraper:
         return valid_results
 
 
-async def get_latest_gold(country_code: str) -> dict | None:
-    scraper = IMFScraper()
-    return await scraper.get_latest_gold_reserve(country_code)
+imf_scraper = IMFScraper()
 
 
-async def get_all_latest_gold() -> list[dict]:
-    scraper = IMFScraper()
-    return await scraper.batch_get_latest_reserves()
+async def get_latest_gold(country_code: str) -> GoldReserve | None:
+    return await imf_scraper.get_latest_gold_reserve(country_code)
 
 
-async def get_gold_history(country_code: str, years: int = 10) -> dict:
-    scraper = IMFScraper()
-    return await scraper.get_gold_reserves_history(country_code, years)
+async def get_all_latest_gold() -> list[GoldReserve]:
+    return await imf_scraper.batch_get_latest_reserves()
 
 
-async def get_all_gold_history(years: int = 10) -> list[dict]:
-    scraper = IMFScraper()
-    return await scraper.batch_get_history(years=years)
+async def get_gold_history(country_code: str, years: int = 10) -> list[GoldReserve]:
+    return await imf_scraper.get_gold_reserves_history(country_code, years)
+
+
+async def get_all_gold_history(years: int = 10) -> list[list[GoldReserve]]:
+    return await imf_scraper.batch_get_history(years=years)

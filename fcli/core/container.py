@@ -1,8 +1,7 @@
-﻿"""Dependency injection container.
+"""Dependency injection container.
 
 Centralized management of all service dependencies for decoupling and testability.
 """
-
 
 from ..infra.http_client import HttpClient, http_client
 from .cache import HybridCache
@@ -30,7 +29,8 @@ class Container:
         self._http_client: HttpClient | None = None
         self._cache_strategy: ICacheStrategy | None = None
         self._quote_service = None
-        self._gold_service = None
+        self._gold_reserve_service = None
+        self._gold_supply_demand_service = None
         self._forex_service = None
         self._gpr_service = None
 
@@ -88,12 +88,20 @@ class Container:
         return self._quote_service
 
     @property
-    def gold_service(self):
-        if self._gold_service is None:
-            from ..services.gold_service import GoldService
+    def gold_reserve_service(self):
+        if self._gold_reserve_service is None:
+            from ..services.gold_reserve_service import GoldReserveService
 
-            self._gold_service = GoldService()
-        return self._gold_service
+            self._gold_reserve_service = GoldReserveService()
+        return self._gold_reserve_service
+
+    @property
+    def gold_supply_demand_service(self):
+        if self._gold_supply_demand_service is None:
+            from ..services.gold_supply_demand_service import GoldSupplyDemandService
+
+            self._gold_supply_demand_service = GoldSupplyDemandService()
+        return self._gold_supply_demand_service
 
     @property
     def forex_service(self):

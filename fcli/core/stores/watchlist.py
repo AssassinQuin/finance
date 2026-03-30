@@ -1,15 +1,12 @@
 import json
 from datetime import datetime
 
+from ..database import Database
 from ..models import Asset, AssetType, Market, WatchlistAssetDB
-from .base import BaseStore
 
 
-class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
+class WatchlistAssetStore:
     """Store for watchlist assets."""
-
-    table_name = "watchlist_assets"
-    model_class = WatchlistAssetDB
 
     @classmethod
     def _row_to_model(cls, row: dict) -> WatchlistAssetDB:
@@ -62,7 +59,7 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
     @classmethod
     async def get_all_active(cls) -> list[WatchlistAssetDB]:
         """Get all active watchlist assets."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return []
 
         sql = """
@@ -71,26 +68,24 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         ORDER BY added_at
         """
 
-        async with cls._pool().acquire() as conn:
-            rows = await conn.fetch(sql)
-            return [cls._row_to_model(dict(row)) for row in rows]
+        rows = await Database.fetch_all(sql)
+        return [cls._row_to_model(dict(row)) for row in rows]
 
     @classmethod
     async def get_by_code(cls, code: str) -> WatchlistAssetDB | None:
         """Get asset by code."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return None
 
         sql = "SELECT * FROM watchlist_assets WHERE code = $1"
 
-        async with cls._pool().acquire() as conn:
-            row = await conn.fetchrow(sql, code)
-            return cls._row_to_model(dict(row)) if row else None
+        row = await Database.fetch_one(sql, code)
+        return cls._row_to_model(dict(row)) if row else None
 
     @classmethod
     async def add(cls, asset: Asset) -> bool:
         """Add or update an asset in watchlist."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return False
 
         db_asset = cls._asset_to_db(asset)
@@ -111,24 +106,23 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
             updated_at = NOW()
         """
 
-        async with cls._pool().acquire() as conn:
-            await conn.execute(
-                sql,
-                db_asset.code,
-                db_asset.api_code,
-                db_asset.name,
-                db_asset.market,
-                db_asset.type,
-                extra_json,
-                db_asset.is_active,
-                db_asset.added_at or datetime.now(),
-            )
-            return True
+        await Database.execute(
+            sql,
+            db_asset.code,
+            db_asset.api_code,
+            db_asset.name,
+            db_asset.market,
+            db_asset.type,
+            extra_json,
+            db_asset.is_active,
+            db_asset.added_at or datetime.now(),
+        )
+        return True
 
     @classmethod
     async def remove(cls, code: str) -> bool:
         """Remove an asset from watchlist (soft delete)."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return False
 
         sql = """
@@ -137,21 +131,19 @@ class WatchlistAssetStore(BaseStore[WatchlistAssetDB]):
         WHERE code = $1
         """
 
-        async with cls._pool().acquire() as conn:
-            result = await conn.execute(sql, code)
-            return result != "UPDATE 0"
+        result = await Database.execute(sql, code)
+        return result != "UPDATE 0"
 
     @classmethod
     async def hard_delete(cls, code: str) -> bool:
         """Permanently delete an asset from watchlist."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return False
 
         sql = "DELETE FROM watchlist_assets WHERE code = $1"
 
-        async with cls._pool().acquire() as conn:
-            result = await conn.execute(sql, code)
-            return result != "DELETE 0"
+        result = await Database.execute(sql, code)
+        return result != "DELETE 0"
 
     @classmethod
     async def get_assets(cls) -> list[Asset]:

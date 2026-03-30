@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .base import Market
 
@@ -28,6 +28,8 @@ class InvestType(str, Enum):
 class Fund(BaseModel):
     """Fund basic information with optional latest scale."""
 
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
     code: str = Field(..., description="Fund code (基金代码)")
     name: str = Field(..., description="Full fund name (基金全称)")
     name_short: str | None = Field(None, description="Short name (基金简称)")
@@ -50,9 +52,6 @@ class Fund(BaseModel):
 
     is_active: bool = Field(default=True, description="Is fund active")
     extra: dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class FundScale(BaseModel):

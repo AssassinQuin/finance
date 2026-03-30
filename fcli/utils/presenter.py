@@ -180,18 +180,22 @@ class ConsolePresenter:
         reserves_table.add_column("储备量(吨)", justify="right", style="bold", width=12)
         reserves_table.add_column("同比", justify="right", width=10)
         reserves_table.add_column("年初至今", justify="right", width=10)
-        reserves_table.add_column("月均(吨)", justify="right", width=10)
+        reserves_table.add_column("月趋势(吨)", justify="right", width=10)
+        reserves_table.add_column("R²", justify="right", width=6)
         reserves_table.add_column("数据日期", justify="center", style="dim", width=8)
 
         reserves = data.get("reserves", [])
         for i, r in enumerate(reserves, 1):
+            trend_r2 = r.get("trend_r2")
+            trend_r2_str = f"{trend_r2:.2f}" if trend_r2 is not None else "-"
             reserves_table.add_row(
                 str(i),
                 r.get("country", ""),
                 f"{r.get('amount', 0):.1f}",
                 ConsolePresenter._format_change(r.get("yoy_change")),
                 ConsolePresenter._format_change(r.get("ytd_change")),
-                ConsolePresenter._format_change(r.get("avg_monthly")),
+                ConsolePresenter._format_change(r.get("monthly_trend")),
+                trend_r2_str,
                 r.get("date", ""),
             )
 
@@ -202,7 +206,7 @@ class ConsolePresenter:
             balance_table = Table(
                 box=box.SIMPLE,
                 header_style="bold cyan",
-                title=f"全球黄金供需平衡表 ({balance.get('date', 'N/A')})",
+                title=f"全球黄金供需平衡表 ({balance.get('period', 'N/A')})",
             )
             balance_table.add_column("项目", justify="left")
             balance_table.add_column("供应 (吨)", justify="right", style="green")
@@ -244,6 +248,60 @@ class ConsolePresenter:
 
         if data.get("last_update"):
             console.print(f"\n[dim]最后更新时间: {data['last_update']}[/dim]")
+
+    @staticmethod
+    def print_gold_supply_balance(balance: dict):
+        """打印黄金供需平衡表 (独立显示)
+
+        Args:
+            balance: 供需数据字典，包含 supply, demand, period 字段
+        """
+        if not balance:
+            ConsolePresenter.print_warning("暂无黄金供需数据")
+            return
+
+        balance_table = Table(
+            box=box.SIMPLE,
+            header_style="bold cyan",
+            title=f"全球黄金供需平衡表 ({balance.get('period', 'N/A')})",
+        )
+        balance_table.add_column("项目", justify="left")
+        balance_table.add_column("供应 (吨)", justify="right", style="green")
+        balance_table.add_column("项目", justify="left")
+        balance_table.add_column("需求 (吨)", justify="right", style="red")
+
+        supply = balance.get("supply", {})
+        demand = balance.get("demand", {})
+
+        rows = [
+            (
+                "矿产金",
+                supply.get("mine_production"),
+                "金饰需求",
+                demand.get("jewelry"),
+            ),
+            (
+                "回收金",
+                supply.get("recycling"),
+                "科技工业",
+                demand.get("technology"),
+            ),
+            (
+                "净套期保值",
+                supply.get("net_hedging"),
+                "投资需求",
+                demand.get("investment", {}).get("total"),
+            ),
+            ("", None, "央行净购入", demand.get("central_banks")),
+            ("总供应", supply.get("total"), "总需求", demand.get("total")),
+        ]
+
+        for s_name, s_val, d_name, d_val in rows:
+            s_val_str = f"{s_val:.1f}" if s_val is not None else ""
+            d_val_str = f"{d_val:.1f}" if d_val is not None else ""
+            balance_table.add_row(s_name, s_val_str, d_name, d_val_str)
+
+        console.print(Panel(balance_table, title="[bold yellow]黄金供需数据[/bold yellow]", border_style="yellow"))
 
     @staticmethod
     def print_gold_history(country_name: str, history: list[dict]):

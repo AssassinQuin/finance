@@ -124,15 +124,16 @@ fcli
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Service Layer (fcli/services/)                                         │
-│  QuoteService | GoldService | ForexService | GprService | SpdrService  │
-│  WatchlistService (支持批量添加/删除)                                   │
+│  QuoteService | GoldReserveService | GoldSupplyDemandService │
+│  ForexService | GprService | SpdrService                          │
+│  WatchlistService (支持批量添加/删除)                              │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Data Source Layer (fcli/services/scrapers/)                            │
-│  BaseScraper → AkshareScraper | IMFScraper | SafeScraper               │
-│  central_bank/ - 各国央行数据抓取器                                     │
+│  BaseScraper → AkshareScraper | IMFScraper | WGCScraper                │
+│  SafeScraper (通用安全抓取器)                                           │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -168,7 +169,8 @@ fcli/
 │   └── stores/          # 数据访问层
 ├── services/
 │   ├── quote_service.py
-│   ├── gold_service.py
+│   ├── gold_reserve_service.py
+│   ├── gold_supply_demand_service.py
 │   ├── forex_service.py
 │   ├── gpr_service.py
 │   ├── watchlist_service.py  # 自选股服务 (批量操作)
@@ -222,8 +224,8 @@ python -m fcli.scripts.migrate migrate
 
 | 表名 | 说明 |
 |------|------|
-| `gold_reserves` | 央行黄金储备历史数据 |
-| `central_bank_schedules` | 央行发布时间配置 |
+| `fact_gold_reserve` | 央行黄金储备 (V2 维度建模) |
+| `fact_gold_supply_demand` | 黄金供需数据 |
 | `fetch_logs` | 数据抓取日志 |
 
 ## 技术栈

@@ -1,16 +1,13 @@
-﻿"""Exchange rate fact store - V2 fact table implementation."""
+"""Exchange rate fact store - V2 fact table implementation."""
 
 from datetime import datetime, timezone
 
 from ..database import Database
 from ..models import ExchangeRate
-from .base import BaseStore
 
 
-class ExchangeRateFactStore(BaseStore[ExchangeRate]):
+class ExchangeRateFactStore:
     """Store for exchange rate data using V2 fact table (fact_fx_rate + dim_currency)."""
-
-    table_name = "fact_fx_rate"
 
     @classmethod
     async def _get_or_create_currency_id(cls, code: str, name: str = "") -> int | None:
@@ -18,31 +15,26 @@ class ExchangeRateFactStore(BaseStore[ExchangeRate]):
         if not Database.is_enabled():
             return None
 
-        pool = cls._pool()
-        if not pool:
-            return None
+        row = await Database.fetch_one(
+            "SELECT id FROM dim_currency WHERE currency_code = $1",
+            code.upper(),
+        )
+        if row:
+            return row["id"]
 
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id FROM dim_currency WHERE currency_code = $1",
-                code.upper(),
-            )
-            if row:
-                return row["id"]
-
-            await conn.execute(
-                """
-                INSERT INTO dim_currency (currency_code, currency_name)
-                VALUES ($1, $2)
-                """,
-                code.upper(),
-                name or code.upper(),
-            )
-            row = await conn.fetchrow(
-                "SELECT id FROM dim_currency WHERE currency_code = $1",
-                code.upper(),
-            )
-            return row["id"] if row else None
+        await Database.execute(
+            """
+            INSERT INTO dim_currency (currency_code, currency_name)
+            VALUES ($1, $2)
+            """,
+            code.upper(),
+            name or code.upper(),
+        )
+        row = await Database.fetch_one(
+            "SELECT id FROM dim_currency WHERE currency_code = $1",
+            code.upper(),
+        )
+        return row["id"] if row else None
 
     @classmethod
     async def _get_source_id(cls, source_name: str = "Frankfurter") -> int | None:
@@ -50,25 +42,16 @@ class ExchangeRateFactStore(BaseStore[ExchangeRate]):
         if not Database.is_enabled():
             return None
 
-        pool = cls._pool()
-        if not pool:
-            return None
-
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id FROM dim_data_source WHERE source_name = $1",
-                source_name,
-            )
-            return row["id"] if row else None
+        row = await Database.fetch_one(
+            "SELECT id FROM dim_data_source WHERE source_name = $1",
+            source_name,
+        )
+        return row["id"] if row else None
 
     @classmethod
     async def save(cls, rate: ExchangeRate) -> bool:
         """Save exchange rate to fact_fx_rate table."""
         if not Database.is_enabled():
-            return False
-
-        pool = cls._pool()
-        if not pool:
             return False
 
         try:
@@ -81,23 +64,22 @@ class ExchangeRateFactStore(BaseStore[ExchangeRate]):
             source_id = await cls._get_source_id("Frankfurter")
             now = rate.update_time or datetime.now(timezone.utc)
 
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO fact_fx_rate (
-                        base_currency_id, quote_currency_id, rate_time, rate, source_id, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (base_currency_id, quote_currency_id, DATE(rate_time)) DO UPDATE SET
-                        rate = EXCLUDED.rate,
-                        source_id = EXCLUDED.source_id
-                    """,
-                    base_id,
-                    quote_id,
-                    now,
-                    rate.rate,
-                    source_id,
-                    now,
-                )
+            await Database.execute(
+                """
+                INSERT INTO fact_fx_rate (
+                    base_currency_id, quote_currency_id, rate_time, rate, source_id, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (base_currency_id, quote_currency_id, DATE(rate_time)) DO UPDATE SET
+                    rate = EXCLUDED.rate,
+                    source_id = EXCLUDED.source_id
+                """,
+                base_id,
+                quote_id,
+                now,
+                rate.rate,
+                source_id,
+                now,
+            )
             return True
         except Exception:
             return False
@@ -108,26 +90,21 @@ class ExchangeRateFactStore(BaseStore[ExchangeRate]):
         if not Database.is_enabled():
             return None
 
-        pool = cls._pool()
-        if not pool:
-            return None
-
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT bc.currency_code as base, qc.currency_code as quote,
-                       f.rate, f.rate_time, ds.source_name
-                FROM fact_fx_rate f
-                JOIN dim_currency bc ON f.base_currency_id = bc.id
-                JOIN dim_currency qc ON f.quote_currency_id = qc.id
-                LEFT JOIN dim_data_source ds ON f.source_id = ds.id
-                WHERE bc.currency_code = $1 AND qc.currency_code = $2
-                ORDER BY f.rate_time DESC
-                LIMIT 1
-                """,
-                base_currency.upper(),
-                quote_currency.upper(),
-            )
+        row = await Database.fetch_one(
+            """
+            SELECT bc.currency_code as base, qc.currency_code as quote,
+                   f.rate, f.rate_time, ds.source_name
+            FROM fact_fx_rate f
+            JOIN dim_currency bc ON f.base_currency_id = bc.id
+            JOIN dim_currency qc ON f.quote_currency_id = qc.id
+            LEFT JOIN dim_data_source ds ON f.source_id = ds.id
+            WHERE bc.currency_code = $1 AND qc.currency_code = $2
+            ORDER BY f.rate_time DESC
+            LIMIT 1
+            """,
+            base_currency.upper(),
+            quote_currency.upper(),
+        )
 
         if not row:
             return None
@@ -146,25 +123,20 @@ class ExchangeRateFactStore(BaseStore[ExchangeRate]):
         if not Database.is_enabled():
             return []
 
-        pool = cls._pool()
-        if not pool:
-            return []
-
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT DISTINCT ON (qc.currency_code)
-                    bc.currency_code as base, qc.currency_code as quote,
-                    f.rate, f.rate_time, ds.source_name
-                FROM fact_fx_rate f
-                JOIN dim_currency bc ON f.base_currency_id = bc.id
-                JOIN dim_currency qc ON f.quote_currency_id = qc.id
-                LEFT JOIN dim_data_source ds ON f.source_id = ds.id
-                WHERE bc.currency_code = $1
-                ORDER BY qc.currency_code, f.rate_time DESC
-                """,
-                base_currency.upper(),
-            )
+        rows = await Database.fetch_all(
+            """
+            SELECT DISTINCT ON (qc.currency_code)
+                bc.currency_code as base, qc.currency_code as quote,
+                f.rate, f.rate_time, ds.source_name
+            FROM fact_fx_rate f
+            JOIN dim_currency bc ON f.base_currency_id = bc.id
+            JOIN dim_currency qc ON f.quote_currency_id = qc.id
+            LEFT JOIN dim_data_source ds ON f.source_id = ds.id
+            WHERE bc.currency_code = $1
+            ORDER BY qc.currency_code, f.rate_time DESC
+            """,
+            base_currency.upper(),
+        )
 
         return [
             ExchangeRate(
@@ -183,27 +155,22 @@ class ExchangeRateFactStore(BaseStore[ExchangeRate]):
         if not Database.is_enabled():
             return []
 
-        pool = cls._pool()
-        if not pool:
-            return []
-
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT bc.currency_code as base, qc.currency_code as quote,
-                       f.rate, f.rate_time, ds.source_name
-                FROM fact_fx_rate f
-                JOIN dim_currency bc ON f.base_currency_id = bc.id
-                JOIN dim_currency qc ON f.quote_currency_id = qc.id
-                LEFT JOIN dim_data_source ds ON f.source_id = ds.id
-                WHERE bc.currency_code = $1 AND qc.currency_code = $2
-                ORDER BY f.rate_time DESC
-                LIMIT $3
-                """,
-                base_currency.upper(),
-                quote_currency.upper(),
-                days,
-            )
+        rows = await Database.fetch_all(
+            """
+            SELECT bc.currency_code as base, qc.currency_code as quote,
+                   f.rate, f.rate_time, ds.source_name
+            FROM fact_fx_rate f
+            JOIN dim_currency bc ON f.base_currency_id = bc.id
+            JOIN dim_currency qc ON f.quote_currency_id = qc.id
+            LEFT JOIN dim_data_source ds ON f.source_id = ds.id
+            WHERE bc.currency_code = $1 AND qc.currency_code = $2
+            ORDER BY f.rate_time DESC
+            LIMIT $3
+            """,
+            base_currency.upper(),
+            quote_currency.upper(),
+            days,
+        )
 
         return [
             ExchangeRate(

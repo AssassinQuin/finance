@@ -1,254 +1,268 @@
-﻿"""Gold supply/demand store for quarterly data persistence using fact table model."""
+"""Gold supply/demand store for quarterly data using wide table schema.
+
+V3: One row per period with all metrics as columns.
+Replaces EAV pattern (period_id + metric_id + value) for simplicity and performance.
+"""
 
 from datetime import datetime
 
+from ..database import Database
 from ..models.gold_supply_demand import GoldSupplyDemand
-from .base import BaseStore
 
 
-class GoldSupplyDemandStore(BaseStore[GoldSupplyDemand]):
-    """Store for gold quarterly supply/demand data using V2 fact table."""
-
-    table_name = "fact_gold_supply_demand"
-    model_class = GoldSupplyDemand
-    pk_field = "id"
-
-    METRIC_MAPPING = {
-        "mine_production": "mine_production",
-        "recycling": "recycling",
-        "net_hedging": "net_hedging",
-        "total_supply": "total_supply",
-        "jewelry": "jewelry",
-        "technology": "technology",
-        "total_investment": "total_investment",
-        "bars_coins": "bars_coins",
-        "etfs": "etfs",
-        "otc_investment": "otc_investment",
-        "central_banks": "central_banks",
-        "total_demand": "total_demand",
-        "supply_demand_balance": "supply_demand_balance",
-        "price_avg_usd": "price_avg_usd",
-    }
+class GoldSupplyDemandStore:
+    """Store for gold quarterly supply/demand data using wide table."""
 
     @classmethod
-    def _row_to_model(cls, row: dict) -> GoldSupplyDemand:
-        """Convert aggregated fact rows to GoldSupplyDemand model."""
-        return GoldSupplyDemand(
-            id=row.get("id"),
-            year=row.get("year", 0),
-            quarter=row.get("quarter", 0),
-            period=row.get("period_label", ""),
-            mine_production=row.get("mine_production", 0.0),
-            recycling=row.get("recycling", 0.0),
-            net_hedging=row.get("net_hedging", 0.0),
-            total_supply=row.get("total_supply", 0.0),
-            jewelry=row.get("jewelry", 0.0),
-            technology=row.get("technology", 0.0),
-            total_investment=row.get("total_investment", 0.0),
-            bars_coins=row.get("bars_coins", 0.0),
-            etfs=row.get("etfs", 0.0),
-            otc_investment=row.get("otc_investment", 0.0),
-            central_banks=row.get("central_banks", 0.0),
-            total_demand=row.get("total_demand", 0.0),
-            supply_demand_balance=row.get("supply_demand_balance", 0.0),
-            price_avg_usd=row.get("price_avg_usd"),
-            data_source=row.get("source_name", ""),
-            fetch_time=row.get("fetch_time"),
-            created_at=row.get("created_at"),
-            updated_at=row.get("updated_at"),
+    async def _get_or_create_period(cls, year: int, quarter: int) -> int | None:
+        """Get or create a period_id in dim_period."""
+        if not Database.is_enabled():
+            return None
+
+        row = await Database.fetch_one(
+            "SELECT id FROM dim_period WHERE year = $1 AND quarter = $2",
+            year,
+            quarter,
         )
+        if row:
+            return row["id"]
+
+        period_label = f"{year} Q{quarter}"
+        result = await Database.fetch_one(
+            """
+            INSERT INTO dim_period (year, quarter, period_label)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (year, quarter) DO UPDATE SET period_label = EXCLUDED.period_label
+            RETURNING id
+            """,
+            year,
+            quarter,
+            period_label,
+        )
+        return result["id"] if result else None
 
     @classmethod
-    async def _get_period_id(cls, year: int, quarter: int) -> int | None:
-        """Get period_id from dim_period."""
-        if not cls._is_enabled():
-            return None
-        pool = cls._pool()
-        if not pool:
+    async def _get_or_create_source(cls, source_name: str) -> int | None:
+        """Get or create source_id in dim_data_source."""
+        if not Database.is_enabled():
             return None
 
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id FROM dim_period WHERE year = $1 AND quarter = $2",
-                year,
-                quarter,
-            )
-            return row["id"] if row else None
+        row = await Database.fetch_one(
+            "SELECT id FROM dim_data_source WHERE source_name = $1",
+            source_name,
+        )
+        if row:
+            return row["id"]
 
-    @classmethod
-    async def _get_metric_id(cls, metric_code: str) -> int | None:
-        """Get metric_id from dim_metric."""
-        if not cls._is_enabled():
-            return None
-        pool = cls._pool()
-        if not pool:
-            return None
+        result = await Database.fetch_one(
+            """
+            INSERT INTO dim_data_source (source_name)
+            VALUES ($1)
+            ON CONFLICT (source_name) DO NOTHING
+            RETURNING id
+            """,
+            source_name,
+        )
+        if result:
+            return result["id"]
 
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id FROM dim_metric WHERE metric_code = $1",
-                metric_code,
-            )
-            return row["id"] if row else None
+        row = await Database.fetch_one(
+            "SELECT id FROM dim_data_source WHERE source_name = $1",
+            source_name,
+        )
+        return row["id"] if row else None
 
     @classmethod
     async def save_quarterly(cls, data: GoldSupplyDemand) -> bool:
         """Save or update quarterly supply/demand data.
 
-        Stores each metric as a separate row in fact_gold_supply_demand.
-        Uses period_id + metric_id as unique key for upsert.
+        Single INSERT with all metrics as columns — no EAV, no N+1.
         """
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return False
 
-        pool = cls._pool()
-        if not pool:
-            return False
-
-        period_id = await cls._get_period_id(data.year, data.quarter)
+        period_id = await cls._get_or_create_period(data.year, data.quarter)
         if not period_id:
             return False
 
-        now = datetime.now()
+        source_id = await cls._get_or_create_source(data.data_source or "WGC")
 
-        metrics = [
-            ("mine_production", data.mine_production),
-            ("recycling", data.recycling),
-            ("net_hedging", data.net_hedging),
-            ("total_supply", data.total_supply),
-            ("jewelry", data.jewelry),
-            ("technology", data.technology),
-            ("total_investment", data.total_investment),
-            ("bars_coins", data.bars_coins),
-            ("etfs", data.etfs),
-            ("otc_investment", data.otc_investment),
-            ("central_banks", data.central_banks),
-            ("total_demand", data.total_demand),
-            ("supply_demand_balance", data.supply_demand_balance),
-            ("price_avg_usd", data.price_avg_usd),
-        ]
-
-        async with pool.acquire() as conn:
-            for metric_code, value in metrics:
-                metric_id = await cls._get_metric_id(metric_code)
-                if not metric_id:
-                    continue
-
-                await conn.execute(
-                    """
-                    INSERT INTO fact_gold_supply_demand (
-                        period_id, metric_id, value, created_at, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5)
-                    ON CONFLICT (period_id, metric_id) DO UPDATE SET
-                        value = EXCLUDED.value,
-                        updated_at = EXCLUDED.updated_at
-                    """,
+        try:
+            await Database.execute(
+                """
+                INSERT INTO fact_gold_supply_demand (
                     period_id,
-                    metric_id,
-                    value,
-                    now,
-                    now,
+                    mine_production, recycling, net_hedging, total_supply,
+                    jewelry, technology, total_investment, bars_coins, etfs,
+                    otc_investment, central_banks, total_demand,
+                    supply_demand_balance, price_avg_usd,
+                    source_id, created_at, updated_at
+                ) VALUES (
+                    $1,
+                    $2, $3, $4, $5,
+                    $6, $7, $8, $9, $10,
+                    $11, $12, $13,
+                    $14, $15,
+                    $16, NOW(), NOW()
                 )
+                ON CONFLICT (period_id) DO UPDATE SET
+                    mine_production = EXCLUDED.mine_production,
+                    recycling = EXCLUDED.recycling,
+                    net_hedging = EXCLUDED.net_hedging,
+                    total_supply = EXCLUDED.total_supply,
+                    jewelry = EXCLUDED.jewelry,
+                    technology = EXCLUDED.technology,
+                    total_investment = EXCLUDED.total_investment,
+                    bars_coins = EXCLUDED.bars_coins,
+                    etfs = EXCLUDED.etfs,
+                    otc_investment = EXCLUDED.otc_investment,
+                    central_banks = EXCLUDED.central_banks,
+                    total_demand = EXCLUDED.total_demand,
+                    supply_demand_balance = EXCLUDED.supply_demand_balance,
+                    price_avg_usd = EXCLUDED.price_avg_usd,
+                    source_id = EXCLUDED.source_id,
+                    updated_at = NOW()
+                """,
+                period_id,
+                data.mine_production,
+                data.recycling,
+                data.net_hedging,
+                data.total_supply,
+                data.jewelry,
+                data.technology,
+                data.total_investment,
+                data.bars_coins,
+                data.etfs,
+                data.otc_investment,
+                data.central_banks,
+                data.total_demand,
+                data.supply_demand_balance,
+                data.price_avg_usd,
+                source_id,
+            )
             return True
+        except Exception:
+            return False
 
     @classmethod
     async def get_by_quarter(cls, year: int, quarter: int) -> GoldSupplyDemand | None:
         """Get supply/demand data for a specific quarter."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return None
 
-        pool = cls._pool()
-        if not pool:
+        row = await Database.fetch_one(
+            """
+            SELECT
+                f.id,
+                p.year, p.quarter, p.period_label,
+                f.mine_production, f.recycling, f.net_hedging, f.total_supply,
+                f.jewelry, f.technology, f.total_investment,
+                f.bars_coins, f.etfs, f.otc_investment,
+                f.central_banks, f.total_demand,
+                f.supply_demand_balance, f.price_avg_usd,
+                ds.source_name,
+                f.created_at, f.updated_at
+            FROM fact_gold_supply_demand f
+            JOIN dim_period p ON f.period_id = p.id
+            LEFT JOIN dim_data_source ds ON f.source_id = ds.id
+            WHERE p.year = $1 AND p.quarter = $2
+            """,
+            year,
+            quarter,
+        )
+
+        if not row:
             return None
 
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT 
-                    p.year, p.quarter, p.period_label,
-                    m.metric_code,
-                    f.value,
-                    f.created_at,
-                    f.updated_at
-                FROM fact_gold_supply_demand f
-                JOIN dim_period p ON f.period_id = p.id
-                JOIN dim_metric m ON f.metric_id = m.id
-                WHERE p.year = $1 AND p.quarter = $2
-                """,
-                year,
-                quarter,
-            )
-
-            if not rows:
-                return None
-
-            aggregated = {
-                "year": year,
-                "quarter": quarter,
-                "period_label": rows[0]["period_label"],
-                "created_at": rows[0]["created_at"],
-                "updated_at": rows[0]["updated_at"],
-            }
-
-            for row in rows:
-                metric_code = row["metric_code"]
-                if metric_code in cls.METRIC_MAPPING:
-                    aggregated[metric_code] = row["value"]
-
-            return cls._row_to_model(aggregated)
+        return cls._row_to_model(row)
 
     @classmethod
     async def get_latest(cls) -> GoldSupplyDemand | None:
         """Get the most recent quarter's data."""
-        if not cls._is_enabled():
+        if not Database.is_enabled():
             return None
 
-        pool = cls._pool()
-        if not pool:
+        row = await Database.fetch_one(
+            """
+            SELECT
+                f.id,
+                p.year, p.quarter, p.period_label,
+                f.mine_production, f.recycling, f.net_hedging, f.total_supply,
+                f.jewelry, f.technology, f.total_investment,
+                f.bars_coins, f.etfs, f.otc_investment,
+                f.central_banks, f.total_demand,
+                f.supply_demand_balance, f.price_avg_usd,
+                ds.source_name,
+                f.created_at, f.updated_at
+            FROM fact_gold_supply_demand f
+            JOIN dim_period p ON f.period_id = p.id
+            LEFT JOIN dim_data_source ds ON f.source_id = ds.id
+            ORDER BY p.year DESC, p.quarter DESC
+            LIMIT 1
+            """
+        )
+
+        if not row:
             return None
 
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT p.year, p.quarter
-                FROM fact_gold_supply_demand f
-                JOIN dim_period p ON f.period_id = p.id
-                ORDER BY p.year DESC, p.quarter DESC
-                LIMIT 1
-                """
-            )
-
-            if not row:
-                return None
-
-            return await cls.get_by_quarter(row["year"], row["quarter"])
+        return cls._row_to_model(row)
 
     @classmethod
     async def get_history(cls, limit: int = 8) -> list[GoldSupplyDemand]:
-        """Get historical supply/demand data (last N quarters)."""
-        if not cls._is_enabled():
+        """Get historical supply/demand data (last N quarters).
+
+        Single query — no N+1 round trips.
+        """
+        if not Database.is_enabled():
             return []
 
-        pool = cls._pool()
-        if not pool:
-            return []
+        rows = await Database.fetch_all(
+            """
+            SELECT
+                f.id,
+                p.year, p.quarter, p.period_label,
+                f.mine_production, f.recycling, f.net_hedging, f.total_supply,
+                f.jewelry, f.technology, f.total_investment,
+                f.bars_coins, f.etfs, f.otc_investment,
+                f.central_banks, f.total_demand,
+                f.supply_demand_balance, f.price_avg_usd,
+                ds.source_name,
+                f.created_at, f.updated_at
+            FROM fact_gold_supply_demand f
+            JOIN dim_period p ON f.period_id = p.id
+            LEFT JOIN dim_data_source ds ON f.source_id = ds.id
+            ORDER BY p.year DESC, p.quarter DESC
+            LIMIT $1
+            """,
+            limit,
+        )
 
-        async with pool.acquire() as conn:
-            periods = await conn.fetch(
-                """
-                SELECT DISTINCT p.year, p.quarter
-                FROM fact_gold_supply_demand f
-                JOIN dim_period p ON f.period_id = p.id
-                ORDER BY p.year DESC, p.quarter DESC
-                LIMIT $1
-                """,
-                limit,
-            )
+        return [cls._row_to_model(row) for row in rows]
 
-            results = []
-            for period in periods:
-                data = await cls.get_by_quarter(period["year"], period["quarter"])
-                if data:
-                    results.append(data)
-
-            return results
+    @classmethod
+    def _row_to_model(cls, row) -> GoldSupplyDemand:
+        """Convert database row to GoldSupplyDemand model."""
+        return GoldSupplyDemand(
+            id=row.get("id"),
+            year=row.get("year", 0),
+            quarter=row.get("quarter", 0),
+            period=row.get("period_label", ""),
+            mine_production=float(row["mine_production"]) if row.get("mine_production") else None,
+            recycling=float(row["recycling"]) if row.get("recycling") else None,
+            net_hedging=float(row["net_hedging"]) if row.get("net_hedging") else None,
+            total_supply=float(row["total_supply"]) if row.get("total_supply") else None,
+            jewelry=float(row["jewelry"]) if row.get("jewelry") else None,
+            technology=float(row["technology"]) if row.get("technology") else None,
+            total_investment=float(row["total_investment"]) if row.get("total_investment") else None,
+            bars_coins=float(row["bars_coins"]) if row.get("bars_coins") else None,
+            etfs=float(row["etfs"]) if row.get("etfs") else None,
+            otc_investment=float(row["otc_investment"]) if row.get("otc_investment") else None,
+            central_banks=float(row["central_banks"]) if row.get("central_banks") else None,
+            total_demand=float(row["total_demand"]) if row.get("total_demand") else None,
+            supply_demand_balance=float(row["supply_demand_balance"]) if row.get("supply_demand_balance") else None,
+            price_avg_usd=float(row["price_avg_usd"]) if row.get("price_avg_usd") else None,
+            data_source=row.get("source_name") or "WGC",
+            fetch_time=row.get("updated_at"),
+            created_at=row.get("created_at"),
+            updated_at=row.get("updated_at"),
+        )

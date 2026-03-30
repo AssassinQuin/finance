@@ -1,14 +1,16 @@
 """
 Gold reserve data scrapers.
-Primary source: IMF SDMX 3.0 API (IRFCL dataset)
+Primary sources: IMF SDMX 3.0 API, World Gold Council
 """
 
 from .base import BaseScraper, ScraperResult
-from .imf_scraper import GOLD_COUNTRY_CODES, IMFScraper
+from .imf_scraper import IMFScraper
+from .wgc_scraper import WGCScraper, wgc_scraper
 
 __all__ = [
     "BaseScraper",
     "ScraperResult",
     "IMFScraper",
-    "GOLD_COUNTRY_CODES",
+    "WGCScraper",
+    "wgc_scraper",
 ]

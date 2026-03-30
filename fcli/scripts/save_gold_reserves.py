@@ -1,4 +1,4 @@
-﻿"""
+"""
 Save gold reserves history to database using IMF SDMX 3.0 API.
 
 Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
@@ -220,17 +220,19 @@ async def verify_data():
 
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
-            SELECT country_code, country_name,
+            SELECT c.country_code, c.country_name,
                    COUNT(*) as records,
-                   MIN(data_date) as min_date,
-                   MAX(data_date) as max_date,
-                   (SELECT gold_tonnes FROM gold_reserves gr2
-                   WHERE gr2.country_code = gr1.country_code
-                   ORDER BY data_date DESC LIMIT 1) as latest_amount
-                   FROM gold_reserves gr1
-                   GROUP BY country_code, country_name
-                   ORDER BY latest_amount DESC
-                   LIMIT 30
+                   MIN(f.report_date) as min_date,
+                   MAX(f.report_date) as max_date,
+                   (SELECT f2.gold_tonnes FROM fact_gold_reserve f2
+                    JOIN dim_country c2 ON f2.country_id = c2.id
+                    WHERE c2.country_code = c.country_code
+                    ORDER BY f2.report_date DESC LIMIT 1) as latest_amount
+            FROM fact_gold_reserve f
+            JOIN dim_country c ON f.country_id = c.id
+            GROUP BY c.country_code, c.country_name
+            ORDER BY latest_amount DESC
+            LIMIT 30
         """)
 
         if rows:

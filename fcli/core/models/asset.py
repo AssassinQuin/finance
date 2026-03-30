@@ -3,13 +3,15 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .base import AssetType, Market
 
 
 class Asset(BaseModel):
     """User's watchlist asset."""
+
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
     code: str = Field(..., description="User facing code, e.g., SP500, 000218")
     api_code: str = Field(..., description="API parameter, e.g., gb_$spx")
@@ -18,9 +20,6 @@ class Asset(BaseModel):
     type: AssetType
     added_at: datetime = Field(default_factory=datetime.now)
     extra: dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class Quote(BaseModel):

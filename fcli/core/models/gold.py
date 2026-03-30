@@ -2,11 +2,13 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class GoldReserve(BaseModel):
     """Gold reserve data model for database operations."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int | None = None
     country_code: str = ""
@@ -15,6 +17,3 @@ class GoldReserve(BaseModel):
     report_date: date | None = None
     data_source: str = ""
     fetch_time: datetime | None = None
-
-    class Config:
-        from_attributes = True

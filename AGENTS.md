@@ -226,7 +226,8 @@ fcli/
 │   └── config.py        # Configuration
 ├── services/
 │   ├── quote_service.py
-│   ├── gold_service.py
+│   ├── gold_reserve_service.py
+│   ├── gold_supply_demand_service.py
 │   ├── forex_service.py
 │   ├── gpr_service.py
 │   ├── watchlist_service.py  # Watchlist service (batch ops)
