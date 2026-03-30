@@ -1,7 +1,9 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 import typer
 
+from ..core.config import config
+from ..core.database import Database
 from ..infra.http_client import run_async
 from ..services.gold_service import gold_service
 from ..utils.presenter import ConsolePresenter
@@ -25,6 +27,7 @@ def reserves(
 
 
 async def _reserves(update: bool) -> None:
+    await Database.init(config)
     status_msg = "强制更新数据..." if update else "获取黄金储备数据..."
     with ConsolePresenter.status(status_msg):
         reserves = await gold_service.fetch_all_with_auto_update(force=update)
@@ -47,11 +50,16 @@ async def _reserves(update: bool) -> None:
 
 @app.command()
 def supply():
-    """黄金供需数据"""
+    """黄金供需数据
+
+    示例:
+        fcli gold supply
+    """
     run_async(_supply())
 
 
 async def _supply():
+    await Database.init(config)
     with ConsolePresenter.status("获取黄金供需数据..."):
         balance = await gold_service.fetch_global_supply_demand()
     if balance:

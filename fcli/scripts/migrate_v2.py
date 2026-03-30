@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+﻿﻿﻿﻿#!/usr/bin/env python3
 """
 V2 数据库迁移脚本
 

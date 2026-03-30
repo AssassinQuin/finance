@@ -1,4 +1,4 @@
-﻿"""
+"""
 Gold reserve service - IMF SDMX 3.0 API only.
 
 Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
@@ -366,10 +366,9 @@ class GoldService:
                         amount=item.get("value", 0),
                         period=item.get("period", ""),
                     ),
-                    "change_1m": 0.0,
-                    "change_3m": 0.0,
-                    "change_6m": 0.0,
-                    "change_12m": 0.0,
+                    "yoy_change": None,
+                    "ytd_change": None,
+                    "avg_monthly": None,
                 }
                 for item in data
             ]
@@ -379,7 +378,6 @@ class GoldService:
 
     @staticmethod
     def _format_multi_period_results(results: list[dict]) -> list[dict]:
-        """格式化多时间段变化数据"""
         return [
             {
                 "country": r.get("country"),
@@ -387,10 +385,9 @@ class GoldService:
                 "amount": r.get("amount"),
                 "date": str(r.get("date")) if r.get("date") else None,
                 "source": r.get("source", "IMF"),
-                "change_1m": r.get("change_1m", 0.0) or 0.0,
-                "change_3m": r.get("change_3m", 0.0) or 0.0,
-                "change_6m": r.get("change_6m", 0.0) or 0.0,
-                "change_12m": r.get("change_12m", 0.0) or 0.0,
+                "yoy_change": float(r["yoy_change"]) if r.get("yoy_change") is not None else None,
+                "ytd_change": float(r["ytd_change"]) if r.get("ytd_change") is not None else None,
+                "avg_monthly": float(r["avg_monthly"]) if r.get("avg_monthly") is not None else None,
             }
             for r in results
         ]
@@ -557,6 +554,16 @@ class GoldService:
             }
             for h in history
         ]
+
+    async def get_top_trend_data(self, top_n: int = 5, months: int = 36) -> dict[str, list[dict]]:
+        if not Database.is_enabled():
+            return {}
+
+        try:
+            return await GoldReserveStore.get_top_countries_history(top_n, months)
+        except Exception as e:
+            logger.error(f"Failed to get top trend data: {e}")
+            return {}
 
 
 # Singleton instance

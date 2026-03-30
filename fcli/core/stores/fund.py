@@ -223,10 +223,10 @@ class FundStore(BaseStore[Fund]):
                     SELECT f.fund_code
                     FROM dim_fund f
                     LEFT JOIN fact_fund_scale s ON f.id = s.fund_id
-                    WHERE s.fetched_at < NOW() - INTERVAL '%s days'
+                    WHERE s.fetched_at < NOW() - INTERVAL '1 day' * $1::interval
                        OR s.fetched_at IS NULL
                     """,
-                    f"{days} days",
+                    days,
                 )
                 return [row["fund_code"] for row in rows]
         except Exception as e:

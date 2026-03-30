@@ -1,5 +1,7 @@
-﻿import typer
+import typer
 
+from ..core.config import config
+from ..core.database import Database
 from ..core.container import container
 from ..infra.http_client import run_async
 from ..services.watchlist_service import watchlist_service
@@ -22,6 +24,7 @@ def query_quotes(ctx: typer.Context):
 
 
 async def _query():
+    await Database.init(config)
     with ConsolePresenter.status("获取自选股行情..."):
         assets = await watchlist_service.list_assets()
         if not assets:
@@ -32,7 +35,9 @@ async def _query():
 
 
 @app.command()
-def add(codes: list[str]):
+def add(
+    codes: list[str] = typer.Argument(help="股票代码 (支持多个)"),
+):
     """添加自选股
 
     支持同时添加多个代码。
@@ -43,6 +48,7 @@ def add(codes: list[str]):
     """
 
     async def _add() -> int:
+        await Database.init(config)
         with ConsolePresenter.status("添加自选股..."):
             count = await watchlist_service.add_assets(codes)
         return count
@@ -52,7 +58,9 @@ def add(codes: list[str]):
 
 
 @app.command()
-def rm(codes: list[str]):
+def rm(
+    codes: list[str] = typer.Argument(help="股票代码 (支持多个)"),
+):
     """删除自选股
 
     支持同时删除多个代码。
@@ -63,6 +71,7 @@ def rm(codes: list[str]):
     """
 
     async def _rm() -> int:
+        await Database.init(config)
         with ConsolePresenter.status("删除自选股..."):
             count = await watchlist_service.remove_assets(codes)
         return count
@@ -80,6 +89,7 @@ def ls():
     """
 
     async def _ls():
+        await Database.init(config)
         with ConsolePresenter.status("获取自选股列表..."):
             assets = await watchlist_service.list_assets()
         ConsolePresenter.print_asset_table(assets)

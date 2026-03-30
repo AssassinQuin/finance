@@ -1,5 +1,7 @@
-﻿import typer
+import typer
 
+from ..core.config import config
+from ..core.database import Database
 from ..infra.http_client import run_async
 from ..services.forex_service import forex_service
 from ..utils.presenter import ConsolePresenter
@@ -23,21 +25,19 @@ def rate(
 
 
 async def _rate(base: str, quote: str | None) -> None:
+    await Database.init(config)
     if quote:
         with ConsolePresenter.status(f"查询 {base}/{quote} 汇率..."):
             rate = await forex_service.get_rate(base, quote)
         if rate:
-            print(f"\n{base}/{quote}: {rate.rate:.4f}\n")
+            ConsolePresenter.print_exchange_rate(rate)
         else:
             ConsolePresenter.print_error(f"无法获取 {base}/{quote}")
     else:
         with ConsolePresenter.status(f"获取 {base} 汇率..."):
-            rates = await forex_service.get_all_rates(base)
-        if rates:
-            print(f"\n{base} 汇率表:\n")
-            for code, r in sorted(rates.items(), key=lambda x: x[1].rate, reverse=True):
-                display = forex_service.format_currency_display(code)
-                print(f"  {display}: {r.rate:.4f}")
-            print()
+            rates_dict = await forex_service.get_all_rates(base)
+        if rates_dict:
+            rates_list = list(rates_dict.values())
+            ConsolePresenter.print_exchange_rates(rates_list, base)
         else:
             ConsolePresenter.print_error(f"无法获取 {base} 汇率")

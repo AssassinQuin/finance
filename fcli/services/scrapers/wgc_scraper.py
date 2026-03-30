@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -112,6 +113,9 @@ class WGCScraper:
 
         try:
             content = await http_client.get_binary(url)
+            if content is None:
+                logger.debug(f"No content returned for {year} Q{quarter}")
+                return None
             logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
             return content
         except Exception as e:
@@ -130,12 +134,47 @@ class WGCScraper:
         """
         try:
             if isinstance(excel_path, bytes):
-                load_workbook(excel_path, data_only=True)
+                workbook = load_workbook(BytesIO(excel_path), data_only=True)
             else:
-                load_workbook(Path(excel_path), data_only=True)
+                workbook = load_workbook(Path(excel_path), data_only=True)
         except Exception as e:
             logger.debug(f"Failed to load Excel: {e}")
-            return None
+            return []
+
+        # Get the sheet
+        ws = workbook.active
+        if ws.title != "黄金供需":
+            logger.debug("Sheet '黄金供需' not found")
+            return []
+
+        results: list[QuarterlySupplyDemand] = []
+
+        # Find quarterly data columns (columns 24+)
+        for col_idx in range(24, ws.max_column + 1):
+            # Check if column has a year/quarter header (e.g., "2024 Q1")
+            cell_value = ws.cell(row=5, column=col_idx).value
+            if cell_value is None:
+                continue
+
+            # Parse quarter from cell value like "2024 Q1"
+            header_str = str(cell_value).strip()
+            if " Q" not in header_str:
+                continue
+
+            # Parse year and quarter
+            try:
+                parts = header_str.split(" Q")
+                year = int(parts[0])
+                quarter = int(parts[1])
+            except (ValueError, TypeError, IndexError):
+                continue
+
+            # Extract data
+            data = self._extract_quarter_data(ws, col_idx, year, quarter)
+            if data:
+                results.append(data)
+
+        return results
 
     def _extract_quarter_data(
         self, ws: Worksheet, col_idx: int, year: int, quarter: int

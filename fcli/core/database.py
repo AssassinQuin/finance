@@ -12,11 +12,33 @@ Usage:
 import asyncio
 import atexit
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncContextManager
 
 import asyncpg
 
 from .config import config
 from .exceptions import DatabaseError
+
+
+class _TransactionContext:
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+        self._conn: asyncpg.Connection | None = None
+        self._tx: "asyncpg.Transaction | None" = None
+
+    async def __aenter__(self) -> "asyncpg.Transaction":
+        self._conn = await self._pool.acquire()
+        self._tx = self._conn.transaction()
+        await self._tx.__aenter__()
+        return self._tx
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._tx:
+            await self._tx.__aexit__(exc_type, exc_val, exc_tb)
+        if self._conn:
+            await self._conn.close()
+
 
 logger = logging.getLogger(__name__)
 
@@ -171,27 +193,32 @@ class Database:
 
     @classmethod
     async def execute_many(cls, sql: str, args_list: list) -> int:
-        """Execute SQL with multiple parameter sets (batch insert/update)."""
+        """Execute SQL with multiple parameter sets (batch insert/update).
+
+        Note: asyncpg's executemany returns None, so we return len(args_list)
+        to indicate how many statements were attempted.
+        """
         await cls._ensure_initialized()
         if not cls.is_enabled():
             raise DatabaseError("Database not enabled")
 
         async with cls._pool.acquire() as conn:
-            result = await conn.executemany(sql, args_list)
-            # asyncpg returns 'INSERT 0 3' style string, extract count
-            if isinstance(result, str):
-                parts = result.split()
-                return int(parts[-1]) if parts else 0
-            return 0
+            await conn.executemany(sql, args_list)
+            return len(args_list)
 
     @classmethod
-    async def transaction(cls):
-        """Get a transaction context manager."""
-        await cls._ensure_initialized()
+    def transaction(cls):
+        """Get a transaction context manager.
+
+        Usage:
+            async with Database.transaction() as tx:
+                await tx.execute("INSERT ...")
+                await tx.execute("UPDATE ...")
+        """
         if not cls.is_enabled():
             raise DatabaseError("Database not enabled")
 
-        return cls._pool.acquire()
+        return _TransactionContext(cls._pool)
 
     @classmethod
     def row_to_dict(cls, row: asyncpg.Record | None) -> dict | None:

@@ -229,12 +229,6 @@ class GoldReserveStore(BaseStore[GoldReserve]):
 
     @classmethod
     async def get_latest_with_multi_period_changes(cls) -> list[dict]:
-        """Get latest reserves with 1/3/6/12 month changes.
-
-        Returns:
-            List of dicts with country, code, amount, date, source,
-            and change_1m, change_3m, change_6m, change_12m
-        """
         if not Database.is_enabled():
             return []
 
@@ -253,47 +247,87 @@ class GoldReserveStore(BaseStore[GoldReserve]):
                 JOIN dim_data_source ds ON f.source_id = ds.id
                 ORDER BY f.country_id, f.report_date DESC
             ),
-            changes AS (
+            yoy AS (
                 SELECT
+                    l.country_id,
                     l.country_code as code,
                     l.country_name as country,
                     l.gold_tonnes as amount,
                     l.report_date as date,
                     l.source_name as source,
-                    COALESCE(
-                        (l.gold_tonnes - h1.gold_tonnes) / NULLIF(h1.gold_tonnes, 0) * 100,
-                        0
-                    ) as change_1m,
-                    COALESCE(
-                        (l.gold_tonnes - h3.gold_tonnes) / NULLIF(h3.gold_tonnes, 0) * 100,
-                        0
-                    ) as change_3m,
-                    COALESCE(
-                        (l.gold_tonnes - h6.gold_tonnes) / NULLIF(h6.gold_tonnes, 0) * 100,
-                        0
-                    ) as change_6m,
-                    COALESCE(
-                        (l.gold_tonnes - h12.gold_tonnes) / NULLIF(h12.gold_tonnes, 0) * 100,
-                        0
-                    ) as change_12m
+                    l.gold_tonnes - h_yoy.gold_tonnes as yoy_change
                 FROM latest l
-                LEFT JOIN fact_gold_reserve h1
-                    ON h1.country_id = l.country_id
-                    AND h1.report_date = l.report_date - INTERVAL '1 month'
-                LEFT JOIN fact_gold_reserve h3
-                    ON h3.country_id = l.country_id
-                    AND h3.report_date <= l.report_date - INTERVAL '3 months'
-                    AND h3.report_date > l.report_date - INTERVAL '4 months'
-                LEFT JOIN fact_gold_reserve h6
-                    ON h6.country_id = l.country_id
-                    AND h6.report_date <= l.report_date - INTERVAL '6 months'
-                    AND h6.report_date > l.report_date - INTERVAL '7 months'
-                LEFT JOIN fact_gold_reserve h12
-                    ON h12.country_id = l.country_id
-                    AND h12.report_date <= l.report_date - INTERVAL '12 months'
-                    AND h12.report_date > l.report_date - INTERVAL '13 months'
+                LEFT JOIN LATERAL (
+                    SELECT gold_tonnes
+                    FROM fact_gold_reserve
+                    WHERE country_id = l.country_id
+                      AND report_date <= l.report_date - INTERVAL '1 year'
+                    ORDER BY report_date DESC
+                    LIMIT 1
+                ) h_yoy ON true
+            ),
+            ytd AS (
+                SELECT
+                    y.country_id,
+                    y.code,
+                    y.country,
+                    y.amount,
+                    y.date,
+                    y.source,
+                    y.yoy_change,
+                    y.amount - h_ytd.gold_tonnes as ytd_change
+                FROM yoy y
+                LEFT JOIN LATERAL (
+                    SELECT gold_tonnes
+                    FROM fact_gold_reserve
+                    WHERE country_id = y.country_id
+                      AND report_date >= DATE_TRUNC('year', y.date)
+                    ORDER BY report_date ASC
+                    LIMIT 1
+                ) h_ytd ON true
+            ),
+            trend AS (
+                SELECT
+                    yd.country_id,
+                    yd.code,
+                    yd.country,
+                    yd.amount,
+                    yd.date,
+                    yd.source,
+                    yd.yoy_change,
+                    yd.ytd_change,
+                    CASE
+                        WHEN h_cnt.cnt > 1 THEN
+                            (h_last.gold_tonnes - h_first.gold_tonnes)
+                            / ((EXTRACT(epoch FROM h_last.report_date) - EXTRACT(epoch FROM h_first.report_date)) / 2592000.0)
+                        ELSE NULL
+                    END as avg_monthly
+                FROM ytd yd
+                LEFT JOIN LATERAL (
+                    SELECT gold_tonnes, report_date
+                    FROM fact_gold_reserve
+                    WHERE country_id = yd.country_id
+                      AND report_date >= yd.date - INTERVAL '3 years'
+                    ORDER BY report_date ASC
+                    LIMIT 1
+                ) h_first ON true
+                LEFT JOIN LATERAL (
+                    SELECT gold_tonnes, report_date
+                    FROM fact_gold_reserve
+                    WHERE country_id = yd.country_id
+                      AND report_date >= yd.date - INTERVAL '3 years'
+                    ORDER BY report_date DESC
+                    LIMIT 1
+                ) h_last ON true
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) as cnt
+                    FROM fact_gold_reserve
+                    WHERE country_id = yd.country_id
+                      AND report_date >= yd.date - INTERVAL '3 years'
+                ) h_cnt ON true
             )
-            SELECT * FROM changes
+            SELECT code, country, amount, date, source, yoy_change, ytd_change, avg_monthly
+            FROM trend
             WHERE amount > 0
             ORDER BY amount DESC
             """
@@ -312,7 +346,7 @@ class GoldReserveStore(BaseStore[GoldReserve]):
 
         rows = await Database.fetch_all(
             """
-            SELECT 
+            SELECT
                 f.id,
                 c.country_code,
                 c.country_name,
@@ -323,15 +357,82 @@ class GoldReserveStore(BaseStore[GoldReserve]):
             FROM fact_gold_reserve f
             JOIN dim_country c ON f.country_id = c.id
             JOIN dim_data_source ds ON f.source_id = ds.id
-            WHERE c.country_code = $1
-              AND f.report_date >= CURRENT_DATE - INTERVAL '%s days'
+            WHERE c.country_code = $2
+              AND f.report_date >= CURRENT_DATE - ($1 || ' days')::interval
             ORDER BY f.report_date DESC
-            """
-            % days,
+            """,
+            days,
             country_code,
         )
 
         return [cls._row_to_model(row) for row in rows]
+
+    @classmethod
+    async def get_top_countries_history(
+        cls,
+        top_n: int = 5,
+        months: int = 36,
+    ) -> dict[str, list[dict]]:
+        """Get 3-year history for top N countries by latest reserves.
+
+        Args:
+            top_n: Number of top countries (default 5)
+            months: Number of months of history (default 36 = 3 years)
+
+        Returns:
+            Dict mapping country_code to list of {date, amount} dicts, sorted by date ASC
+        """
+        if not Database.is_enabled():
+            return {}
+
+        latest = await Database.fetch_all(
+            """
+            SELECT DISTINCT ON (f.country_id)
+                f.country_id,
+                c.country_code,
+                c.country_name,
+                f.gold_tonnes
+            FROM fact_gold_reserve f
+            JOIN dim_country c ON f.country_id = c.id
+            ORDER BY f.country_id, f.report_date DESC
+            """
+        )
+
+        top_countries = sorted(latest, key=lambda x: x["gold_tonnes"] or 0, reverse=True)[:top_n]
+        if not top_countries:
+            return {}
+
+        country_ids = [row["country_id"] for row in top_countries]
+        code_to_name = {row["country_code"]: row["country_name"] for row in top_countries}
+
+        placeholders = ", ".join(f"${i + 2}" for i in range(len(country_ids)))
+        rows = await Database.fetch_all(
+            f"""
+            SELECT c.country_code, f.gold_tonnes, f.report_date
+            FROM fact_gold_reserve f
+            JOIN dim_country c ON f.country_id = c.id
+            WHERE f.country_id IN ({placeholders})
+              AND f.report_date >= CURRENT_DATE - ($1 || ' months')::interval
+            ORDER BY c.country_code, f.report_date ASC
+            """,
+            str(months),
+            *country_ids,
+        )
+
+        result: dict[str, list[dict]] = {}
+        for row in rows:
+            code = row["country_code"]
+            if code not in result:
+                result[code] = []
+            result[code].append(
+                {
+                    "date": row["report_date"].strftime("%Y-%m") if row["report_date"] else "",
+                    "amount": float(row["gold_tonnes"]) if row["gold_tonnes"] else 0.0,
+                    "country_name": code_to_name.get(code, ""),
+                }
+            )
+
+        return result
 
     @classmethod
     async def _get_or_create_country(cls, country_code: str, country_name: str) -> int | None:

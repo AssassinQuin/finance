@@ -1,5 +1,7 @@
-﻿import typer
+import typer
 
+from ..core.config import config
+from ..core.database import Database
 from ..infra.http_client import run_async
 from ..services.gpr_service import gpr_service
 from ..utils.presenter import ConsolePresenter
@@ -25,6 +27,7 @@ def index(
 
 
 async def _index(update: bool, chart: bool) -> None:
+    await Database.init(config)
     if update:
         with ConsolePresenter.status("更新 GPR 数据..."):
             result = await gpr_service.update_data()
@@ -52,11 +55,17 @@ async def _index(update: bool, chart: bool) -> None:
 def history(
     months: int = typer.Option(120, "-m", "--months", help="显示月数"),
 ):
-    """GPR 历史趋势"""
+    """GPR 历史趋势
+
+    示例:
+        fcli gpr history
+        fcli gpr history -m 60
+    """
     run_async(_history(months))
 
 
 async def _history(months: int) -> None:
+    await Database.init(config)
     with ConsolePresenter.status("获取历史数据..."):
         data = await gpr_service.get_gpr_history(months=months)
     if data:

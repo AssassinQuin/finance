@@ -129,14 +129,16 @@ class HttpClient:
 
         for attempt in range(max_retries):
             try:
-                async with asyncio.timeout(total_timeout):
-                    response = await session.get(
+                response = await asyncio.wait_for(
+                    session.get(
                         url,
                         params=params,
                         proxy=proxy,
                         headers=request_headers,
                         allow_redirects=follow_redirects,
-                    )
+                    ),
+                    timeout=total_timeout,
+                )
                 response.raise_for_status()
                 if binary_mode:
                     return await response.read()

@@ -1,4 +1,4 @@
-﻿"""Market command - fund search and detail."""
+"""Market command - fund search and detail."""
 
 from typing import Annotated
 
@@ -11,23 +11,32 @@ from ..infra.http_client import run_async
 from ..services.fund_service import fund_service
 from ..utils.presenter import ConsolePresenter
 
-app = typer.Typer(help="基金市场 (search/detail)")
+app = typer.Typer(help="基金市场", context_settings={"help_option_names": ["-h", "--help"]})
 
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
-    """FCLI - 命令行金融工具"""
+    """基金市场 (默认命令)
+
+    示例:
+        fcli market
+    """
     pass
 
 
 @app.command()
 def search(
-    ctx: typer.Context,
     query: Annotated[str, typer.Argument(help="搜索关键词 (代码或名称)")],
-    type: Annotated[str | None, typer.Option(help="基金类型: INDEX/ETF/FUND")] = None,
-    limit: Annotated[int, typer.Option(help="返回结果数量")] = 20,
+    type: Annotated[str | None, typer.Option("--type", "-t", help="基金类型 (INDEX/ETF/FUND)")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="返回结果数量")] = 20,
 ):
-    """搜索基金."""
+    """搜索基金
+
+    示例:
+        fcli market search 沪深 300
+        fcli market search 510300 -t ETF
+        fcli market search 黄金 -n 5
+    """
     try:
         fund_type_enum = None
         if type:
@@ -47,10 +56,13 @@ def search(
 
 @app.command()
 def detail(
-    ctx: typer.Context,
     code: Annotated[str, typer.Argument(help="基金代码")],
 ):
-    """查看基金详情."""
+    """查看基金详情
+
+    示例:
+        fcli market detail 510300
+    """
     try:
         fund_detail = run_async(_get_fund_detail(code))
 
@@ -66,11 +78,16 @@ def detail(
 
 @app.command()
 def update(
-    ctx: typer.Context,
-    type: Annotated[str | None, typer.Option("--type", "-t", help="基金类型: INDEX/ETF/FUND")] = None,
-    force: Annotated[bool, typer.Option("--force", "-f", help="强制更新，跳过月度检查")] = False,
+    type: Annotated[str | None, typer.Option("--type", "-t", help="基金类型 (INDEX/ETF/FUND)")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="强制更新")] = False,
 ):
-    """更新基金数据."""
+    """更新基金数据
+
+    示例:
+        fcli market update
+        fcli market update -t ETF
+        fcli market update -f
+    """
     try:
         ConsolePresenter.print_info("正在更新基金数据...")
         count = run_async(_update_fund_data(type, force))

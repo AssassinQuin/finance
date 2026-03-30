@@ -27,21 +27,25 @@ class ConsolePresenter:
 
     @staticmethod
     def _format_change(val: float | None) -> str:
-        if val is None or val == 0:
+        if val is None:
             return "-"
-        if val > 0:
-            return f"[bold red]+{val:.1f}[/bold red]"
-        return f"[bold green]{val:.1f}[/bold green]"
+        rounded = round(val, 1)
+        if rounded == 0:
+            return "0.0"
+        if rounded > 0:
+            return f"[bold red]+{rounded:.1f}[/bold red]"
+        return f"[bold green]{rounded:.1f}[/bold green]"
 
     @staticmethod
     def _format_change_compact(val: float | None) -> str:
         if val is None:
             return "[dim]-[/dim]"
-        if val > 0:
-            return f"[red]+{val:.1f}[/red]"
-        if val < 0:
-            return f"[green]{val:.1f}[/green]"
-        return "0.0"
+        rounded = round(val, 1)
+        if rounded == 0:
+            return "0.0"
+        if rounded > 0:
+            return f"[red]+{rounded:.1f}[/red]"
+        return f"[green]{rounded:.1f}[/green]"
 
     @staticmethod
     def print_asset_table(assets: list[Asset]):
@@ -169,15 +173,14 @@ class ConsolePresenter:
         reserves_table = Table(
             box=box.SIMPLE,
             header_style="bold yellow",
-            title="全球 Top 20 央行黄金储备 (多时间段变化)",
+            title="全球 Top 20 央行黄金储备",
         )
         reserves_table.add_column("排名", justify="center", style="dim", width=4)
         reserves_table.add_column("国家/组织", justify="left", width=16)
         reserves_table.add_column("储备量(吨)", justify="right", style="bold", width=12)
-        reserves_table.add_column("1月变化", justify="right", width=10)
-        reserves_table.add_column("3月变化", justify="right", width=10)
-        reserves_table.add_column("6月变化", justify="right", width=10)
-        reserves_table.add_column("12月变化", justify="right", width=10)
+        reserves_table.add_column("同比", justify="right", width=10)
+        reserves_table.add_column("年初至今", justify="right", width=10)
+        reserves_table.add_column("月均(吨)", justify="right", width=10)
         reserves_table.add_column("数据日期", justify="center", style="dim", width=8)
 
         reserves = data.get("reserves", [])
@@ -186,10 +189,9 @@ class ConsolePresenter:
                 str(i),
                 r.get("country", ""),
                 f"{r.get('amount', 0):.1f}",
-                ConsolePresenter._format_change(r.get("change_1m")),
-                ConsolePresenter._format_change(r.get("change_3m")),
-                ConsolePresenter._format_change(r.get("change_6m")),
-                ConsolePresenter._format_change(r.get("change_12m")),
+                ConsolePresenter._format_change(r.get("yoy_change")),
+                ConsolePresenter._format_change(r.get("ytd_change")),
+                ConsolePresenter._format_change(r.get("avg_monthly")),
                 r.get("date", ""),
             )
 
@@ -275,6 +277,37 @@ class ConsolePresenter:
                 f"[{change_style}]{change_str}[/{change_style}]",
             )
         console.print(table)
+
+    @staticmethod
+    def print_gold_trend_chart(trend_data: dict[str, list[dict]]) -> None:
+        if not trend_data or all(not v for v in trend_data.values()):
+            return
+
+        plt.clf()
+        plt.theme("dark")
+        plt.plotsize(100, 25)
+        plt.date_form("Y-m")
+
+        colors = ["yellow", "red", "cyan", "green", "magenta"]
+        legend_items = []
+
+        for i, (country_code, data_points) in enumerate(trend_data.items()):
+            if not data_points:
+                continue
+            color = colors[i % len(colors)]
+            dates = [dp["date"] for dp in data_points]
+            amounts = [dp["amount"] for dp in data_points]
+            country_name = data_points[0].get("country_name", country_code) if data_points else country_code
+            plt.plot(dates, amounts, color=color)
+            legend_items.append(f"[{color}]●[/{color}] {country_name}")
+
+        plt.title("全球 Top 5 央行黄金储备趋势 (3年)")
+        plt.xlabel("日期")
+        plt.ylabel("储备量 (吨)")
+        plt.show()
+
+        if legend_items:
+            console.print("  " + "  ".join(legend_items))
 
     @staticmethod
     def print_gpr_chart(history: list[dict]):
