@@ -1,4 +1,4 @@
-"""Gold reserves store - PostgreSQL implementation with V2 schema."""
+"""Gold reserves store - PostgreSQL flat table implementation."""
 
 from datetime import date, datetime
 from typing import Any
@@ -8,7 +8,7 @@ from ..models.gold import GoldReserve
 
 
 class GoldReserveStore:
-    """Store for gold reserve data using PostgreSQL V2 schema."""
+    """Store for gold reserve data using flat gold_reserves table."""
 
     @classmethod
     async def save(cls, data: GoldReserve) -> bool:
@@ -16,29 +16,21 @@ class GoldReserveStore:
             return False
 
         try:
-            country_id = await cls._get_or_create_country(data.country_code, data.country_name)
-            source_id = await cls._get_or_create_source(data.data_source or "IMF")
-
-            if not country_id or not source_id:
-                return False
-
             await Database.execute(
                 """
-                INSERT INTO fact_gold_reserve (
-                    country_id, report_date, gold_tonnes,
-                    fetched_at, source_id
-                ) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (country_id, report_date) DO UPDATE SET
+                INSERT INTO gold_reserves (country_code, country_name, gold_tonnes, report_date, data_source, fetched_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (country_code, report_date) DO UPDATE SET
                     gold_tonnes = EXCLUDED.gold_tonnes,
                     fetched_at = EXCLUDED.fetched_at,
-                    source_id = EXCLUDED.source_id,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                country_id,
-                data.report_date or date.today(),
+                data.country_code,
+                data.country_name,
                 data.amount_tonnes,
+                data.report_date or date.today(),
+                data.data_source or "IMF",
                 datetime.now(),
-                source_id,
             )
             return True
         except Exception:
@@ -46,25 +38,39 @@ class GoldReserveStore:
 
     @classmethod
     async def save_many(cls, data_list: list[GoldReserve]) -> int:
-        if not Database.is_enabled():
-            return 0
-
-        count = 0
-        for data in data_list:
-            if await cls.save(data):
-                count += 1
-        return count
+        return await cls.save_batch(data_list)
 
     @classmethod
     async def save_batch(cls, data_list: list[GoldReserve]) -> int:
         if not Database.is_enabled() or not data_list:
             return 0
 
-        count = 0
-        for data in data_list:
-            if await cls.save(data):
-                count += 1
-        return count
+        try:
+            args_list = [
+                (
+                    d.country_code,
+                    d.country_name,
+                    d.amount_tonnes,
+                    d.report_date or date.today(),
+                    d.data_source or "IMF",
+                    datetime.now(),
+                )
+                for d in data_list
+            ]
+            await Database.execute_many(
+                """
+                INSERT INTO gold_reserves (country_code, country_name, gold_tonnes, report_date, data_source, fetched_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (country_code, report_date) DO UPDATE SET
+                    gold_tonnes = EXCLUDED.gold_tonnes,
+                    fetched_at = EXCLUDED.fetched_at,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                args_list,
+            )
+            return len(args_list)
+        except Exception:
+            return 0
 
     @classmethod
     async def get_latest(cls, country_code: str | None = None) -> GoldReserve | None:
@@ -74,19 +80,11 @@ class GoldReserveStore:
         if country_code:
             row = await Database.fetch_one(
                 """
-                SELECT 
-                    f.id,
-                    c.country_code,
-                    c.country_name,
-                    f.gold_tonnes,
-                    f.report_date as data_date,
-                    f.fetched_at,
-                    ds.source_name as data_source
-                FROM fact_gold_reserve f
-                JOIN dim_country c ON f.country_id = c.id
-                JOIN dim_data_source ds ON f.source_id = ds.id
-                WHERE c.country_code = $1
-                ORDER BY f.report_date DESC
+                SELECT id, country_code, country_name, gold_tonnes,
+                       report_date as data_date, fetched_at, data_source
+                FROM gold_reserves
+                WHERE country_code = $1
+                ORDER BY report_date DESC
                 LIMIT 1
                 """,
                 country_code,
@@ -94,18 +92,10 @@ class GoldReserveStore:
         else:
             row = await Database.fetch_one(
                 """
-                SELECT 
-                    f.id,
-                    c.country_code,
-                    c.country_name,
-                    f.gold_tonnes,
-                    f.report_date as data_date,
-                    f.fetched_at,
-                    ds.source_name as data_source
-                FROM fact_gold_reserve f
-                JOIN dim_country c ON f.country_id = c.id
-                JOIN dim_data_source ds ON f.source_id = ds.id
-                ORDER BY f.report_date DESC
+                SELECT id, country_code, country_name, gold_tonnes,
+                       report_date as data_date, fetched_at, data_source
+                FROM gold_reserves
+                ORDER BY report_date DESC
                 LIMIT 1
                 """
             )
@@ -123,18 +113,10 @@ class GoldReserveStore:
         if country_code:
             row = await Database.fetch_one(
                 """
-                SELECT 
-                    f.id,
-                    c.country_code,
-                    c.country_name,
-                    f.gold_tonnes,
-                    f.report_date as data_date,
-                    f.fetched_at,
-                    ds.source_name as data_source
-                FROM fact_gold_reserve f
-                JOIN dim_country c ON f.country_id = c.id
-                JOIN dim_data_source ds ON f.source_id = ds.id
-                WHERE c.country_code = $1 AND f.report_date = $2
+                SELECT id, country_code, country_name, gold_tonnes,
+                       report_date as data_date, fetched_at, data_source
+                FROM gold_reserves
+                WHERE country_code = $1 AND report_date = $2
                 """,
                 country_code,
                 data_date,
@@ -142,19 +124,11 @@ class GoldReserveStore:
         else:
             row = await Database.fetch_one(
                 """
-                SELECT 
-                    f.id,
-                    c.country_code,
-                    c.country_name,
-                    f.gold_tonnes,
-                    f.report_date as data_date,
-                    f.fetched_at,
-                    ds.source_name as data_source
-                FROM fact_gold_reserve f
-                JOIN dim_country c ON f.country_id = c.id
-                JOIN dim_data_source ds ON f.source_id = ds.id
-                WHERE f.report_date = $1
-                ORDER BY f.gold_tonnes DESC
+                SELECT id, country_code, country_name, gold_tonnes,
+                       report_date as data_date, fetched_at, data_source
+                FROM gold_reserves
+                WHERE report_date = $1
+                ORDER BY gold_tonnes DESC
                 LIMIT 1
                 """,
                 data_date,
@@ -172,19 +146,11 @@ class GoldReserveStore:
 
         rows = await Database.fetch_all(
             """
-            SELECT 
-                f.id,
-                c.country_code,
-                c.country_name,
-                f.gold_tonnes,
-                f.report_date as data_date,
-                f.fetched_at,
-                ds.source_name as data_source
-            FROM fact_gold_reserve f
-            JOIN dim_country c ON f.country_id = c.id
-            JOIN dim_data_source ds ON f.source_id = ds.id
-            WHERE f.report_date = $1
-            ORDER BY f.gold_tonnes DESC
+            SELECT id, country_code, country_name, gold_tonnes,
+                   report_date as data_date, fetched_at, data_source
+            FROM gold_reserves
+            WHERE report_date = $1
+            ORDER BY gold_tonnes DESC
             """,
             data_date,
         )
@@ -196,7 +162,7 @@ class GoldReserveStore:
         if not Database.is_enabled():
             return None
 
-        row = await Database.fetch_one("SELECT MAX(report_date) as max_date FROM fact_gold_reserve")
+        row = await Database.fetch_one("SELECT MAX(report_date) as max_date FROM gold_reserves")
         return row["max_date"] if row and row["max_date"] else None
 
     @classmethod
@@ -206,10 +172,9 @@ class GoldReserveStore:
 
         rows = await Database.fetch_all(
             """
-            SELECT c.country_code, MAX(f.report_date) as latest_date
-            FROM fact_gold_reserve f
-            JOIN dim_country c ON f.country_id = c.id
-            GROUP BY c.country_code
+            SELECT country_code, MAX(report_date) as latest_date
+            FROM gold_reserves
+            GROUP BY country_code
             """
         )
         return {row["country_code"]: row["latest_date"] for row in rows}
@@ -222,21 +187,19 @@ class GoldReserveStore:
         rows = await Database.fetch_all(
             """
             WITH latest AS (
-                SELECT DISTINCT ON (f.country_id)
-                    f.country_id, c.country_code, c.country_name,
-                    f.gold_tonnes, f.report_date, ds.source_name
-                FROM fact_gold_reserve f
-                JOIN dim_country c ON f.country_id = c.id
-                JOIN dim_data_source ds ON f.source_id = ds.id
-                ORDER BY f.country_id, f.report_date DESC
+                SELECT DISTINCT ON (country_code)
+                    country_code, country_name,
+                    gold_tonnes, report_date, data_source
+                FROM gold_reserves
+                ORDER BY country_code, report_date DESC
             ),
             yoy AS (
                 SELECT l.*,
                     l.gold_tonnes - h_yoy.gold_tonnes as yoy_change
                 FROM latest l
                 LEFT JOIN LATERAL (
-                    SELECT gold_tonnes FROM fact_gold_reserve
-                    WHERE country_id = l.country_id
+                    SELECT gold_tonnes FROM gold_reserves
+                    WHERE country_code = l.country_code
                       AND report_date <= l.report_date - INTERVAL '1 year'
                     ORDER BY report_date DESC LIMIT 1
                 ) h_yoy ON true
@@ -246,31 +209,31 @@ class GoldReserveStore:
                     y.gold_tonnes - h_ytd.gold_tonnes as ytd_change
                 FROM yoy y
                 LEFT JOIN LATERAL (
-                    SELECT gold_tonnes FROM fact_gold_reserve
-                    WHERE country_id = y.country_id
+                    SELECT gold_tonnes FROM gold_reserves
+                    WHERE country_code = y.country_code
                       AND report_date >= DATE_TRUNC('year', y.report_date)
                     ORDER BY report_date ASC LIMIT 1
                 ) h_ytd ON true
             ),
             trend AS (
                 SELECT
-                    yd.country_id, yd.country_code, yd.country_name,
-                    yd.gold_tonnes, yd.report_date, yd.source_name,
+                    yd.country_code, yd.country_name,
+                    yd.gold_tonnes, yd.report_date, yd.data_source,
                     yd.yoy_change, yd.ytd_change,
                     REGR_SLOPE(f.gold_tonnes, EXTRACT(epoch FROM f.report_date) / 2592000.0) as monthly_trend,
                     REGR_R2(f.gold_tonnes, EXTRACT(epoch FROM f.report_date) / 2592000.0) as trend_r2,
                     COUNT(*) as data_points
                 FROM ytd yd
-                JOIN fact_gold_reserve f ON f.country_id = yd.country_id
+                JOIN gold_reserves f ON f.country_code = yd.country_code
                     AND f.report_date >= yd.report_date - INTERVAL '3 years'
                     AND f.report_date <= yd.report_date
-                GROUP BY yd.country_id, yd.country_code, yd.country_name,
-                         yd.gold_tonnes, yd.report_date, yd.source_name,
+                GROUP BY yd.country_code, yd.country_name,
+                         yd.gold_tonnes, yd.report_date, yd.data_source,
                          yd.yoy_change, yd.ytd_change
             )
-            SELECT 
-                country_code, country_name, gold_tonnes, report_date, 
-                source_name, yoy_change, ytd_change, 
+            SELECT
+                country_code, country_name, gold_tonnes, report_date,
+                data_source, yoy_change, ytd_change,
                 monthly_trend, trend_r2, data_points
             FROM trend
             WHERE gold_tonnes > 0
@@ -290,20 +253,12 @@ class GoldReserveStore:
 
         rows = await Database.fetch_all(
             """
-            SELECT
-                f.id,
-                c.country_code,
-                c.country_name,
-                f.gold_tonnes,
-                f.report_date as data_date,
-                f.fetched_at,
-                ds.source_name as data_source
-            FROM fact_gold_reserve f
-            JOIN dim_country c ON f.country_id = c.id
-            JOIN dim_data_source ds ON f.source_id = ds.id
-            WHERE c.country_code = $2
-              AND f.report_date >= CURRENT_DATE - ($1 || ' days')::interval
-            ORDER BY f.report_date DESC
+            SELECT id, country_code, country_name, gold_tonnes,
+                   report_date as data_date, fetched_at, data_source
+            FROM gold_reserves
+            WHERE country_code = $2
+              AND report_date >= CURRENT_DATE - ($1 || ' days')::interval
+            ORDER BY report_date DESC
             """,
             days,
             country_code,
@@ -322,14 +277,10 @@ class GoldReserveStore:
 
         latest = await Database.fetch_all(
             """
-            SELECT DISTINCT ON (f.country_id)
-                f.country_id,
-                c.country_code,
-                c.country_name,
-                f.gold_tonnes
-            FROM fact_gold_reserve f
-            JOIN dim_country c ON f.country_id = c.id
-            ORDER BY f.country_id, f.report_date DESC
+            SELECT DISTINCT ON (country_code)
+                country_code, country_name, gold_tonnes
+            FROM gold_reserves
+            ORDER BY country_code, report_date DESC
             """
         )
 
@@ -337,21 +288,20 @@ class GoldReserveStore:
         if not top_countries:
             return {}
 
-        country_ids = [row["country_id"] for row in top_countries]
+        country_codes = [row["country_code"] for row in top_countries]
         code_to_name = {row["country_code"]: row["country_name"] for row in top_countries}
 
-        placeholders = ", ".join(f"${i + 2}" for i in range(len(country_ids)))
+        placeholders = ", ".join(f"${i + 2}" for i in range(len(country_codes)))
         rows = await Database.fetch_all(
             f"""
-            SELECT c.country_code, f.gold_tonnes, f.report_date
-            FROM fact_gold_reserve f
-            JOIN dim_country c ON f.country_id = c.id
-            WHERE f.country_id IN ({placeholders})
-              AND f.report_date >= CURRENT_DATE - ($1 || ' months')::interval
-            ORDER BY c.country_code, f.report_date ASC
+            SELECT country_code, gold_tonnes, report_date
+            FROM gold_reserves
+            WHERE country_code IN ({placeholders})
+              AND report_date >= CURRENT_DATE - ($1 || ' months')::interval
+            ORDER BY country_code, report_date ASC
             """,
             str(months),
-            *country_ids,
+            *country_codes,
         )
 
         result: dict[str, list[dict]] = {}
@@ -368,68 +318,6 @@ class GoldReserveStore:
             )
 
         return result
-
-    @classmethod
-    async def _get_or_create_country(cls, country_code: str, country_name: str) -> int | None:
-        if not Database.is_enabled():
-            return None
-
-        row = await Database.fetch_one(
-            "SELECT id FROM dim_country WHERE country_code = $1",
-            country_code,
-        )
-
-        if row:
-            return row["id"]
-
-        try:
-            result = await Database.fetch_one(
-                """
-                INSERT INTO dim_country (country_code, country_name)
-                VALUES ($1, $2)
-                ON CONFLICT (country_code) DO UPDATE SET country_name = EXCLUDED.country_name
-                RETURNING id
-                """,
-                country_code,
-                country_name,
-            )
-            return result["id"] if result else None
-        except Exception:
-            return None
-
-    @classmethod
-    async def _get_or_create_source(cls, source_name: str) -> int | None:
-        if not Database.is_enabled():
-            return None
-
-        row = await Database.fetch_one(
-            "SELECT id FROM dim_data_source WHERE source_name = $1",
-            source_name,
-        )
-
-        if row:
-            return row["id"]
-
-        try:
-            result = await Database.fetch_one(
-                """
-                INSERT INTO dim_data_source (source_name)
-                VALUES ($1)
-                ON CONFLICT (source_name) DO NOTHING
-                RETURNING id
-                """,
-                source_name,
-            )
-            if result:
-                return result["id"]
-
-            row = await Database.fetch_one(
-                "SELECT id FROM dim_data_source WHERE source_name = $1",
-                source_name,
-            )
-            return row["id"] if row else None
-        except Exception:
-            return None
 
     @classmethod
     def _row_to_model(cls, row: Any) -> GoldReserve:

@@ -220,13 +220,19 @@ forex_ttl = 300          # 汇率缓存 5 分钟
 python -m fcli.scripts.migrate migrate
 ```
 
-## 数据库表结构
+## 数据库表结构 (V3)
 
 | 表名 | 说明 |
 |------|------|
-| `fact_gold_reserve` | 央行黄金储备 (V2 维度建模) |
-| `fact_gold_supply_demand` | 黄金供需数据 |
-| `fetch_logs` | 数据抓取日志 |
+| `gold_reserves` | 央行黄金储备 (country_code, gold_tonnes, report_date) |
+| `gpr_history` | 地缘政治风险指数 (country_code, gpr_index, report_date) |
+| `quotes` | 资产行情 (code, price, change_percent, quote_time) |
+| `fx_rates` | 汇率 (base_currency, quote_currency, rate) |
+| `gold_supply_demand` | 黄金供需 (year, quarter, 供需指标) |
+| `funds` | 基金元数据 (fund_code, fund_name) |
+| `fund_scales` | 基金规模历史 |
+| `watchlist_assets` | 自选股 |
+| `cache_entries` | UNLOGGED 缓存表 |
 
 ## 技术栈
 

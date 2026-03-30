@@ -11,7 +11,7 @@ from ..models.base import Market
 logger = logging.getLogger(__name__)
 
 _INSERT_SQL = """
-    INSERT INTO dim_fund (
+    INSERT INTO funds (
         fund_code, fund_name, fund_name_short, fund_type, market,
         invest_type, management_fee, custody_fee,
         fund_company, tracking_index, inception_date, listing_date,
@@ -104,9 +104,9 @@ class FundStore:
         try:
             await Database.execute(
                 """
-                INSERT INTO fact_fund_scale (
+                INSERT INTO fund_scales (
                     fund_id, report_date, scale, share, nav, fetched_at
-                ) SELECT id, $2, $3, $4, $5, $6 FROM dim_fund WHERE fund_code = $1
+                ) SELECT id, $2, $3, $4, $5, $6 FROM funds WHERE fund_code = $1
                 ON CONFLICT (fund_id, report_date) DO UPDATE SET
                     scale = EXCLUDED.scale,
                     share = EXCLUDED.share,
@@ -137,7 +137,7 @@ class FundStore:
                        invest_type, management_fee, custody_fee,
                        fund_company, tracking_index, inception_date, listing_date,
                        is_active, extra
-                FROM dim_fund
+                FROM funds
                 WHERE fund_code = $1
                 """,
                 code,
@@ -168,7 +168,7 @@ class FundStore:
                        invest_type, management_fee, custody_fee,
                        fund_company, tracking_index, inception_date, listing_date,
                        is_active, extra
-                FROM dim_fund
+                FROM funds
                 WHERE fund_code % $1
                    OR fund_name % $1
                    OR COALESCE(fund_name_short, fund_name) % $1
@@ -209,8 +209,8 @@ class FundStore:
             rows = await Database.fetch_all(
                 """
                 SELECT f.fund_code
-                FROM dim_fund f
-                LEFT JOIN fact_fund_scale s ON f.id = s.fund_id
+                FROM funds f
+                LEFT JOIN fund_scales s ON f.id = s.fund_id
                 WHERE s.fetched_at < NOW() - INTERVAL '1 day' * $1::interval
                    OR s.fetched_at IS NULL
                 """,
@@ -230,8 +230,8 @@ class FundStore:
             rows = await Database.fetch_all(
                 """
                 SELECT f.fund_code, s.report_date, s.scale, s.share, s.nav, s.fetched_at
-                FROM fact_fund_scale s
-                JOIN dim_fund f ON s.fund_id = f.id
+                FROM fund_scales s
+                JOIN funds f ON s.fund_id = f.id
                 WHERE f.fund_code = $1
                 ORDER BY s.report_date DESC
                 LIMIT $2

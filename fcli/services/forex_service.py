@@ -9,7 +9,7 @@ from datetime import datetime
 from ..core.cache import cache
 from ..core.config import config
 from ..core.models import ExchangeRate
-from ..core.stores.exchange_rate_fact import ExchangeRateFactStore
+from ..core.stores.exchange_rate import ExchangeRateStore
 from ..infra.http_client import http_client
 
 
@@ -66,7 +66,7 @@ class ForexService:
                         },
                         config.cache.forex_ttl,
                     )
-                    await ExchangeRateFactStore.save(rate)
+                    await ExchangeRateStore.save(rate)
                     return rate
 
             except Exception:

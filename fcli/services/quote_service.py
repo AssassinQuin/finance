@@ -16,7 +16,7 @@ from ..core.config import Settings
 from ..core.interfaces.cache import ICache
 from ..core.interfaces.source import IQuoteSource
 from ..core.models import Asset, AssetType, Market, Quote
-from ..core.stores.quote_fact import QuoteFactStore
+from ..core.stores.quote import QuoteStore
 from ..infra.http_client import HttpClient
 from ..utils.logger import LogContext
 from ..utils.logger import quote_logger as logger
@@ -85,7 +85,7 @@ class QuoteService:
                 if quote:
                     ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
                     await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
-                    await QuoteFactStore.save(quote)
+                    await QuoteStore.save(quote)
                     logger.info(
                         "Quote fetched",
                         LogContext(

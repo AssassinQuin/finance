@@ -1,50 +1,44 @@
-﻿# AI Agent Development Guide
+# AI Agent Development Guide
 
 ## Project Overview
 
-FCLI is a command-line financial data tool built with Python, async/await patterns, and PostgreSQL with dimension/fact table architecture (V2).
+FCLI is a command-line financial data tool built with Python, async/await patterns, and PostgreSQL with flat table architecture (V3).
 
 ## Architecture
 
-### Database Schema (V2)
+### Database Schema (V3)
 
-The project uses a **dimensional modeling** approach (star schema):
+Simple flat tables — no JOINs, no dimension tables, no star schema.
 
-**Dimension Tables:**
-- `dim_country` - Country reference data
-- `dim_currency` - Currency reference data
-- `dim_data_source` - Data source metadata
-- `dim_asset` - Financial asset metadata
-- `dim_period` - Time period dimensions
-- `dim_metric` - Metric definitions
-
-**Fact Tables:**
-- `fact_gold_reserve` - Central bank gold reserves
-- `fact_gpr` - Geopolitical risk index data
-- `fact_fx_rate` - Foreign exchange rates
-- `fact_quote` - Asset price quotes
-- `fact_gold_supply_demand` - Gold supply/demand data
-- `fact_fetch_log` - Data fetch operation logs
-
-**Legacy Compatibility:**
-- `gold_reserves` (VIEW) → maps to `fact_gold_reserve` + `dim_country`
-- `gpr_history` (VIEW) → maps to `fact_gpr`
+**Data Tables:**
+| Table | Description |
+|-------|-------------|
+| `gold_reserves` | Central bank gold reserves (country_code, country_name, gold_tonnes, report_date) |
+| `gpr_history` | Geopolitical risk index (country_code, report_date, gpr_index) |
+| `quotes` | Asset price quotes (code, name, price, change_percent, quote_time) |
+| `fx_rates` | Foreign exchange rates (base_currency, quote_currency, rate, rate_time) |
+| `gold_supply_demand` | Gold supply/demand quarterly data (year, quarter, all metrics) |
+| `funds` | Fund metadata (fund_code, fund_name) |
+| `fund_scales` | Fund scale history (fund_id, scale, scale_date) |
+| `watchlist_assets` | User watchlist (code, added_at) |
+| `cache_entries` | UNLOGGED cache table |
 
 ### SQL Queries
 
-Use V2 fact/dimension tables in new code:
+All queries are simple single-table SELECTs:
 ```sql
--- PREFERRED: V2 schema with joins
-SELECT 
-    f.gold_tonnes,
-    c.country_name,
-    ds.source_name
-FROM fact_gold_reserve f
-JOIN dim_country c ON f.country_id = c.id
-JOIN dim_data_source ds ON f.source_id = ds.id
-
--- ACCEPTABLE: Legacy views (for backward compatibility)
+-- Get latest gold reserves
 SELECT * FROM gold_reserves
+ORDER BY report_date DESC, gold_tonnes DESC;
+
+-- Get quotes by code
+SELECT * FROM quotes WHERE code = $1
+ORDER BY quote_time DESC LIMIT 1;
+
+-- Get exchange rate
+SELECT * FROM fx_rates
+WHERE base_currency = $1 AND quote_currency = $2
+ORDER BY rate_time DESC LIMIT 1;
 ```
 
 ### Datetime Handling
@@ -155,7 +149,7 @@ async def command_handler():
     try:
         await Database.init(config)
         # Use Store classes or Database class methods
-        data = await Database.fetch_all("SELECT * FROM fact_gold_reserve")
+        data = await Database.fetch_all("SELECT * FROM gold_reserves")
     finally:
         await Database.close()
 
@@ -166,36 +160,41 @@ db = Database()  # Never do this
 ### Store Classes
 
 All Store classes follow the same pattern:
-- Use `Database.fetch_all()`, `Database.fetch_one()`, `Database.execute()`
+- Use `Database.fetch_all()`, `Database.fetch_one()`, `Database.execute()`, `Database.execute_many()`
 - No instance state (class methods only)
 - Check `Database.is_enabled()` before database operations
+- Single-table queries (no JOINs)
 
 **Available Stores:**
-- `GoldSupplyDemandStore` - V2 fact tables (fact_gold_supply_demand + dim_period + dim_metric)
-- `QuoteFactStore` - V2 fact tables (fact_quote + dim_asset) - not yet integrated in services
-- `ExchangeRateFactStore` - V2 fact tables (fact_fx_rate + dim_currency) - not yet integrated in services
-- `GoldReserveStore` - Legacy view (gold_reserves)
-- `GPRHistoryStore` - Legacy view (gpr_history)
-- `WatchlistAssetStore` - Direct table (watchlist_assets)
-- `FundStore` - Direct table (funds)
+- `GoldReserveStore` - Flat table `gold_reserves`
+- `GPRHistoryStore` - Flat table `gpr_history`
+- `QuoteStore` - Flat table `quotes`
+- `ExchangeRateStore` - Flat table `fx_rates`
+- `GoldSupplyDemandStore` - Flat table `gold_supply_demand`
+- `FundStore` - Flat tables `funds` + `fund_scales`
+- `WatchlistAssetStore` - Flat table `watchlist_assets`
+
+**Backward compatibility aliases (deprecated):**
+- `QuoteFactStore` = `QuoteStore`
+- `ExchangeRateFactStore` = `ExchangeRateStore`
 
 ## Migration Notes
 
-### V1 → V2 Migration
+### V2 → V3 Migration
 
-- Completed: All V1 data migrated to V2 fact tables
-- Backup tables dropped: `gold_reserves_v1_backup`, `gpr_history_v1_backup`
-- Compatibility views created for zero-downtime migration
-- V1 Stores removed: `QuoteStore`, `ExchangeRateStore` (dead code)
-- GoldSupplyDemandStore migrated to V2 schema
+- Dropped all `dim_*` dimension tables (dim_country, dim_currency, dim_data_source, dim_asset, dim_period, dim_metric)
+- Dropped all `fact_*` fact tables (fact_gold_reserve, fact_gpr, fact_fx_rate, fact_quote, fact_gold_supply_demand)
+- Renamed `dim_fund` → `funds`, `fact_fund_scale` → `fund_scales`
+- Created flat tables: gold_reserves, gpr_history, quotes, fx_rates, gold_supply_demand
+- Data migrated via INSERT...SELECT from V2 star schema
+- All Stores rewritten: no JOINs, no get_or_create, batch writes via execute_many()
+- Migration script: `fcli/scripts/migrate_v3.py`
 
-### Future Refactoring
+### V1 → V2 → V3 History
 
-Consider updating Store classes to use V2 schema directly:
-- `GoldReserveStore` → query `fact_gold_reserve` + `dim_country`
-- `GPRHistoryStore` → query `fact_gpr`
-- Remove compatibility views after Store migration
-- Integrate `QuoteFactStore` and `ExchangeRateFactStore` into services
+- V1: Simple tables (gold_reserves, gpr_history)
+- V2: Star schema (dim_* + fact_*) — over-engineered for a CLI tool
+- V3: Flat tables — simple, no JOINs, same PG benefits
 
 ## Testing
 
@@ -220,7 +219,14 @@ fcli/
 │   └── fx.py            # FX commands (rate)
 ├── core/
 │   ├── models/          # Pydantic models
-│   ├── stores/          # Data access layer
+│   ├── stores/          # Data access layer (flat tables)
+│   │   ├── gold.py            # GoldReserveStore
+│   │   ├── gpr.py             # GPRHistoryStore
+│   │   ├── quote.py           # QuoteStore
+│   │   ├── exchange_rate.py   # ExchangeRateStore
+│   │   ├── gold_supply_demand.py # GoldSupplyDemandStore
+│   │   ├── fund.py            # FundStore
+│   │   └── watchlist.py       # WatchlistAssetStore
 │   ├── cache.py         # Hybrid cache
 │   ├── database.py      # Database singleton
 │   └── config.py        # Configuration
@@ -239,7 +245,7 @@ fcli/
 │   ├── logger.py        # Logging
 │   └── time_util.py     # Time utilities
 └── scripts/
-    ├── migrate.py       # Database migration
+    ├── migrate_v3.py    # V3 migration (V2→V3 flatten)
     └── save_gold_reserves.py
 ```
 
@@ -248,32 +254,22 @@ fcli/
 ### Adding New Data Source
 
 1. Create scraper in `fcli/services/scrapers/`
-2. Create Store class in `fcli/core/stores/`
-3. Add dimensions to `init_v2.sql` if needed
-4. Create fact table in `init_v2.sql`
-5. Add command in `fcli/commands/`
+2. Create Store class in `fcli/core/stores/` (single flat table, no JOINs)
+3. Add command in `fcli/commands/`
 
 ### Modifying Existing Data
 
-1. Update fact table schema in `init_v2.sql`
+1. Update table schema (ALTER TABLE or recreate)
 2. Update Store class queries
 3. Update Pydantic model in `fcli/core/models/`
 4. Test with `python run.py <command>`
 
-### Database Schema Changes
-
-1. Modify `init_v2.sql`
-2. Create migration script if data exists
-3. Test migration on backup
-4. Apply to production
-5. Update Store classes
-
 ## Performance Optimization
 
 - UNLOGGED tables for cache (`cache_entries`)
-- Proper indexes on fact tables (see `init_v2.sql`)
+- Proper indexes on flat tables
 - Connection pooling via asyncpg
-- Dimensional modeling for query performance
+- `execute_many()` for batch writes
 
 ## Error Handling
 
