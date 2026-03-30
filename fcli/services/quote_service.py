@@ -1,4 +1,4 @@
-﻿"""Quote Service - 行情查询服务
+"""Quote Service - 行情查询服务
 
 重构说明:
 - 使用依赖注入模式，通过构造函数传入依赖
@@ -137,7 +137,7 @@ class QuoteService:
 
     async def _fetch_fund_1234567(self, asset: Asset) -> Quote | None:
         # 使用配置化的URL
-        url = self._config.datasource.fund_gz_api.format(code=asset.api_code)
+        url = self._config.datasource.fund.gz_api_url.format(code=asset.api_code)
         text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "jsonpgz" not in text:
@@ -199,7 +199,7 @@ class QuoteService:
     async def _fetch_sina_cn(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = self._config.datasource.sina_cn_quote.format(code=code)
+        url = self._config.datasource.sina.cn_quote_url.format(code=code)
         text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -235,7 +235,7 @@ class QuoteService:
     async def _fetch_sina_hk(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = self._config.datasource.sina_cn_quote.format(code=code)
+        url = self._config.datasource.sina.cn_quote_url.format(code=code)
         text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -271,7 +271,7 @@ class QuoteService:
     async def _fetch_sina_us(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = self._config.datasource.sina_cn_quote.format(code=code)
+        url = self._config.datasource.sina.cn_quote_url.format(code=code)
         text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -307,7 +307,7 @@ class QuoteService:
     async def _fetch_sina_global(self, asset: Asset) -> Quote | None:
         code = asset.api_code
         # 使用配置化的URL
-        url = self._config.datasource.sina_cn_quote.format(code=code)
+        url = self._config.datasource.sina.cn_quote_url.format(code=code)
         text = await self._http_client.fetch(url, text_mode=True)
 
         if not text or "=" not in text:
@@ -351,7 +351,7 @@ class QuoteService:
         if not secid:
             return None
 
-        url = self._config.datasource.eastmoney_quote_api
+        url = self._config.datasource.eastmoney.quote_api_url
         params = {
             "secid": secid,
             "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f162,f163,f166,f169,f170,f171,f184",
@@ -510,7 +510,7 @@ class QuoteService:
             return []
 
         # 使用配置化的URL
-        url = self._config.datasource.eastmoney_batch_api
+        url = self._config.datasource.eastmoney.batch_quote_url
         params = {
             "fltt": 2,
             "invt": 2,

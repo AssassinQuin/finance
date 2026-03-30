@@ -40,8 +40,14 @@ DNS_ERROR_MARKERS = (
 
 
 def _is_dns_error(exc: BaseException) -> bool:
-    """Check if an exception is caused by a DNS resolution failure."""
-    if isinstance(exc, (socket.gaierror, OSError)):
+    """Check if an exception is caused by a DNS resolution failure.
+
+    Note: We only check socket.gaierror, NOT OSError broadly.
+    aiohttp.ClientOSError inherits from OSError but represents connection
+    errors (like "Connection reset by peer") that ARE retryable — unlike
+    true DNS failures which won't resolve within seconds.
+    """
+    if isinstance(exc, socket.gaierror):
         return True
     msg = str(exc).lower()
     return any(marker.lower() in msg for marker in DNS_ERROR_MARKERS)
@@ -114,6 +120,8 @@ class IMFScraper:
         "VNM": "越南",
     }
 
+    BATCH_CONCURRENCY = 5
+
     def __init__(self, country_codes: dict[str, str] | None = None):
         self.api_key = self._get_api_key()
         self.headers = {"Accept": "application/json"}
@@ -122,6 +130,7 @@ class IMFScraper:
         self.country_codes = country_codes or self.GOLD_COUNTRY_CODES
         self._consecutive_dns_failures = 0
         self._dns_circuit_open = False
+        self._semaphore = asyncio.Semaphore(self.BATCH_CONCURRENCY)
 
     def _get_api_key(self) -> str | None:
         return config.api.imf_primary
@@ -167,16 +176,17 @@ class IMFScraper:
                 timeout = aiohttp.ClientTimeout(total=60, connect=30)
                 proxy = self._get_proxy(url)
 
-                async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
-                    if response.status == 200:
-                        self._consecutive_dns_failures = 0
-                        return await response.json()
-                    if response.status == 429:
-                        retry_after = float(response.headers.get("Retry-After", "5"))
-                        await asyncio.sleep(retry_after)
-                        continue
-                    text = await response.text()
-                    raise aiohttp.ClientError(f"IMF API error: {response.status} - {text}")
+                async with self._semaphore:
+                    async with session.get(url, headers=self.headers, proxy=proxy, timeout=timeout) as response:
+                        if response.status == 200:
+                            self._consecutive_dns_failures = 0
+                            return await response.json()
+                        if response.status == 429:
+                            retry_after = float(response.headers.get("Retry-After", "5"))
+                            await asyncio.sleep(retry_after)
+                            continue
+                        text = await response.text()
+                        raise aiohttp.ClientError(f"IMF API error: {response.status} - {text}")
 
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
                 if _is_dns_error(e):
@@ -356,10 +366,37 @@ class IMFScraper:
         logger.debug(f"{country_code}: fetched {len(reserves)} periods")
         return reserves
 
+    async def _precheck_connectivity(self) -> bool:
+        """Test DNS connectivity with a single lightweight request.
+
+        Returns True if network is reachable, False if DNS fails.
+        Sets circuit breaker on failure to prevent batch spam.
+        """
+        if self._dns_circuit_open:
+            return False
+
+        # Try the first country as a canary request
+        first_code = next(iter(self.country_codes), "USA")
+        url = self._build_data_url(first_code, start_period="2025-01", end_period="2025-01")
+
+        try:
+            await self._request_with_backoff(url)
+            return True
+        except Exception as e:
+            if _is_dns_error(e):
+                logger.error("DNS pre-check failed — network unreachable. Skipping batch request. Error: %s", e)
+                self._dns_circuit_open = True
+                return False
+            # Non-DNS errors (rate limit, 500, etc.) — network is fine, proceed
+            return True
+
     async def batch_get_latest_reserves(self, country_codes: list[str] | None = None) -> list[GoldReserve]:
         """Get latest reserves for multiple countries."""
         if country_codes is None:
             country_codes = list(self.country_codes.keys())
+
+        if not await self._precheck_connectivity():
+            return []
 
         tasks = [self.get_latest_gold_reserve(code) for code in country_codes]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -380,6 +417,9 @@ class IMFScraper:
         """Get historical reserves for multiple countries."""
         if country_codes is None:
             country_codes = list(self.country_codes.keys())
+
+        if not await self._precheck_connectivity():
+            return []
 
         tasks = [self.get_gold_reserves_history(code, years) for code in country_codes]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -425,6 +465,9 @@ class IMFScraper:
         """Get historical reserves as list of dicts (backward compatible)."""
         if country_codes is None:
             country_codes = list(self.country_codes.keys())
+
+        if not await self._precheck_connectivity():
+            return []
 
         tasks = [self.get_gold_reserves_history_dict(code, years) for code in country_codes]
         results = await asyncio.gather(*tasks, return_exceptions=True)

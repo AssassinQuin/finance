@@ -57,7 +57,7 @@ class SinaQuoteSource(QuoteSourceABC):
             return []
 
         codes = [asset.api_code for asset in assets]
-        url = f"{self._config.datasource.sina_base_url}/list={','.join(codes)}"
+        url = f"https://hq.sinajs.cn/list={','.join(codes)}"
 
         try:
             text = await self._http_client.fetch(

@@ -17,7 +17,7 @@ class GPRScraper:
     """GPR data scraper from Caldara-Iacoviello dataset."""
 
     def __init__(self):
-        self.data_url = config.datasource.gpr_data_url
+        self.data_url = config.datasource.gpr.gpr_data_url
         self._session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
 

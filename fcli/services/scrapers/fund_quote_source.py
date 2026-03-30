@@ -45,9 +45,9 @@ class FundQuoteSource(QuoteSourceABC):
         return [q for q in quotes if q is not None]
 
     async def _fetch_fund(self, asset: Asset) -> Quote | None:
-        if not self._config.datasource.fund_gz_api:
+        if not self._config.datasource.fund.gz_api_url:
             return None
-        url = self._config.datasource.fund_gz_api.format(code=asset.code)
+        url = self._config.datasource.fund.gz_api_url.format(code=asset.code)
 
         text = await self._try_fetch_with_fallback_encodings(url)
 

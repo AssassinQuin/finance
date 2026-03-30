@@ -1,4 +1,4 @@
-﻿"""
+"""
 汇率查询服务
 支持 Frankfurter API (欧洲央行汇率) 和 ExchangeRate-API
 """
@@ -78,7 +78,7 @@ class ForexService:
 
     async def _fetch_frankfurter(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 Frankfurter API 获取汇率 (欧洲央行数据)"""
-        url = f"{config.datasource.frankfurter_base}/latest"
+        url = f"{config.datasource.forex.frankfurter_base_url}/latest"
         params = {
             "from": base_currency,
             "to": quote_currency,
@@ -106,7 +106,7 @@ class ForexService:
 
     async def _fetch_exchangerate(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 ExchangeRate-API 获取汇率"""
-        url = f"{config.datasource.exchangerate_base}/v6/latest/{base_currency}"
+        url = f"{config.datasource.forex.exchangerate_base_url}/v6/latest/{base_currency}"
 
         data = await http_client.fetch(url)
 

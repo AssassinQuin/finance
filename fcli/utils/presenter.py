@@ -407,9 +407,12 @@ class ConsolePresenter:
 
     @staticmethod
     def print_exchange_rate(rate: ExchangeRate):
+        from ..services.forex_service import forex_service
+
+        cn_name = forex_service.get_currency_name(rate.quote_currency)
         console.print(
             Panel(
-                f"[bold]{rate.base_currency}/{rate.quote_currency}[/bold]: [cyan]{rate.rate:.4f}[/cyan]\n"
+                f"[bold]{rate.base_currency}/{rate.quote_currency}[/bold] ({cn_name}): [cyan]{rate.rate:.4f}[/cyan]\n"
                 f"数据源: {rate.source or 'N/A'}",
                 title="汇率查询结果",
                 border_style="cyan",
@@ -418,17 +421,22 @@ class ConsolePresenter:
 
     @staticmethod
     def print_exchange_rates(rates: list[ExchangeRate], base: str):
+        from ..services.forex_service import forex_service
+
         table = Table(
             box=box.SIMPLE,
             header_style="bold cyan",
             title=f"{base} 汇率表",
         )
         table.add_column("货币对", justify="left", style="green")
+        table.add_column("货币", justify="left", style="dim")
         table.add_column("汇率", justify="right", style="bold")
 
         for rate in rates:
+            cn_name = forex_service.get_currency_name(rate.quote_currency)
             table.add_row(
                 f"{rate.base_currency}/{rate.quote_currency}",
+                cn_name,
                 f"{rate.rate:.4f}",
             )
         console.print(table)

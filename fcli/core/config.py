@@ -1,14 +1,17 @@
 """FCLI 配置模块
 
-所有配置文件（.env, config.toml）固定使用项目目录，
-无论命令从哪个目录执行。
+配置来源: .env 文件 + 环境变量
+所有默认值硬编码在 Field(default=...) 中。
+
+环境变量命名规则:
+  FCLI__{SECTION}__{FIELD}  (使用双下划线分隔)
+  例如: FCLI__DB__HOST=127.0.0.1
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,16 +28,6 @@ PACKAGE_ROOT = Path(__file__).parent.parent.parent
 
 # 配置文件路径（始终使用项目目录）
 PROJECT_ENV_PATH = str(PACKAGE_ROOT / ".env")
-PROJECT_CONFIG_PATH = PACKAGE_ROOT / "config.toml"
-
-# 尝试导入 tomllib (Python 3.11+) 或 tomli
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib
-    except ImportError:
-        tomllib = None
 
 
 # ============================================================
@@ -46,36 +39,33 @@ class DatabaseSettings(BaseSettings):
     """PostgreSQL database configuration."""
 
     host: str = "127.0.0.1"
-    port: int = 5432  # PostgreSQL default port
+    port: int = 5432
     user: str = "postgres"
     password: str = ""
     database: str = "fcli"
     pool_min: int = 2
     pool_max: int = 10
 
-    model_config = SettingsConfigDict(
-        env_prefix="FCLI_DB_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore")
 
 
 class TradingHoursSettings(BaseSettings):
-    """交易时间配置 - 所有默认值来自 config.toml"""
+    """交易时间配置"""
 
-    cn_morning_start: str | None = Field(default=None)
-    cn_morning_end: str | None = Field(default=None)
-    cn_afternoon_start: str | None = Field(default=None)
-    cn_afternoon_end: str | None = Field(default=None)
-    hk_morning_start: str | None = Field(default=None)
-    hk_morning_end: str | None = Field(default=None)
-    hk_afternoon_start: str | None = Field(default=None)
-    hk_afternoon_end: str | None = Field(default=None)
-    us_pre_market_start: str | None = Field(default=None)
-    us_pre_market_end: str | None = Field(default=None)
-    us_regular_start: str | None = Field(default=None)
-    us_regular_end: str | None = Field(default=None)
+    cn_morning_start: str = Field(default="09:30")
+    cn_morning_end: str = Field(default="11:30")
+    cn_afternoon_start: str = Field(default="13:00")
+    cn_afternoon_end: str = Field(default="15:00")
+    hk_morning_start: str = Field(default="09:30")
+    hk_morning_end: str = Field(default="12:00")
+    hk_afternoon_start: str = Field(default="13:00")
+    hk_afternoon_end: str = Field(default="16:00")
+    us_pre_market_start: str = Field(default="21:30")
+    us_pre_market_end: str = Field(default="04:00")
+    us_regular_start: str = Field(default="21:30")
+    us_regular_end: str = Field(default="04:00")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_TRADING_HOURS_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -83,23 +73,26 @@ class TradingHoursSettings(BaseSettings):
 
 
 class CacheSettings(BaseSettings):
-    """缓存配置 - 所有默认值来自 config.toml"""
+    """缓存配置"""
 
-    default_ttl: int | None = Field(default=None)
-    search_ttl: int | None = Field(default=None)
-    stock_trading_ttl: int | None = Field(default=None)
-    stock_non_trading_ttl: int | None = Field(default=None)
-    fund_trading_ttl: int | None = Field(default=None)
-    fund_non_trading_ttl: int | None = Field(default=None)
-    forex_ttl: int | None = Field(default=None)
-    gold_ttl: int | None = Field(default=None)
-    quote_short_ttl: int | None = Field(default=None)
-    quote_medium_ttl: int | None = Field(default=None)
-    quote_long_ttl: int | None = Field(default=None)
-    quote_history_days: int | None = Field(default=None)
+    default_ttl: int = Field(default=300)
+    search_ttl: int = Field(default=86400)
+    stock_trading_ttl: int = Field(default=30)
+    stock_non_trading_ttl: int = Field(default=300)
+    fund_trading_ttl: int = Field(default=60)
+    fund_non_trading_ttl: int = Field(default=300)
+    index_trading_ttl: int = Field(default=30)
+    index_non_trading_ttl: int = Field(default=300)
+    forex_ttl: int = Field(default=3600)
+    bond_ttl: int = Field(default=7200)
+    gold_ttl: int = Field(default=86400)
+    gpr_ttl: int = Field(default=86400)
+    quote_short_ttl: int = Field(default=300)
+    quote_medium_ttl: int = Field(default=600)
+    quote_long_ttl: int = Field(default=3600)
+    quote_history_days: int = Field(default=30)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_CACHE_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -107,16 +100,15 @@ class CacheSettings(BaseSettings):
 
 
 class HttpSettings(BaseSettings):
-    """HTTP 配置 - 所有默认值来自 config.toml"""
+    """HTTP 请求配置"""
 
-    total_timeout: int | None = Field(default=None)
-    connect_timeout: int | None = Field(default=None)
-    max_retries: int | None = Field(default=None)
-    retry_delay: float | None = Field(default=None)
-    max_concurrent: int | None = Field(default=None)
+    total_timeout: int = Field(default=30)
+    connect_timeout: int = Field(default=10)
+    max_retries: int = Field(default=3)
+    retry_delay: float = Field(default=1.0)
+    max_concurrent: int = Field(default=10)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_HTTP_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -124,38 +116,45 @@ class HttpSettings(BaseSettings):
 
 
 class DisplaySettings(BaseSettings):
-    """展示层配置 - 所有默认值来自 config.toml"""
+    """展示层配置"""
 
-    market_map: dict | None = Field(default=None)
-    type_map: dict | None = Field(default=None)
-    type_color: dict | None = Field(default=None)
-
-    model_config = SettingsConfigDict(
-        env_prefix="FCLI_DISPLAY_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
+    market_map: dict = Field(
+        default={
+            "CN": "沪深",
+            "HK": "港股",
+            "US": "美股",
+            "FUND": "基金",
+            "GLOBAL": "全球",
+            "FOREX": "外汇",
+            "BOND": "债券",
+        }
     )
+    type_map: dict = Field(default={"STOCK": "股票", "FUND": "基金", "INDEX": "指数", "FOREX": "外汇", "BOND": "债券"})
+    type_color: dict = Field(
+        default={"STOCK": "yellow", "FUND": "magenta", "INDEX": "blue", "FOREX": "cyan", "BOND": "white"}
+    )
+
+    model_config = SettingsConfigDict(env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore")
 
 
 class ProxySettings(BaseSettings):
-    """代理配置 - 所有默认值来自 config.toml"""
+    """代理配置"""
 
     http: str | None = Field(default=None)
     https: str | None = Field(default=None)
     enabled: bool | None = Field(default=None)
 
-    model_config = SettingsConfigDict(
-        env_prefix="FCLI_PROXY_", env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore")
 
 
 class ApiKeySettings(BaseSettings):
-    """API密钥配置 - 所有默认值来自 config.toml"""
+    """API密钥配置"""
 
     fred: str | None = Field(default=None)
     imf_primary: str | None = Field(default=None)
     imf_secondary: str | None = Field(default=None)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_API_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -163,13 +162,12 @@ class ApiKeySettings(BaseSettings):
 
 
 class GoldSettings(BaseSettings):
-    """黄金相关配置 - 所有默认值来自 config.toml"""
+    """黄金相关配置"""
 
-    price_usd_per_ounce: float | None = Field(default=None)
-    wan_oz_to_tonne: float | None = Field(default=None)
+    price_usd_per_ounce: float = Field(default=2300.0)
+    wan_oz_to_tonne: float = Field(default=0.311035)
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_GOLD_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -177,7 +175,7 @@ class GoldSettings(BaseSettings):
 
 
 # ============================================================
-# 数据源详细配置类（从 datasource_config.py 合并）
+# 数据源详细配置类
 # ============================================================
 
 
@@ -197,7 +195,6 @@ class SinaDataSource(BaseSettings):
     us_prefix: str = Field(default="gb_", description="美股前缀")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_SINA_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -236,7 +233,6 @@ class EastmoneyDataSource(BaseSettings):
     global_market_code: int = Field(default=100, description="全球市场代码")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_EASTMONEY_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -276,7 +272,6 @@ class FundDataSource(BaseSettings):
     detail_api_url: str = Field(default="https://fund.eastmoney.com/pingzxinfo_{code}.html", description="基金详情页")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_FUND_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -295,7 +290,6 @@ class ForexDataSource(BaseSettings):
     exchangerate_base_url: str = Field(default="https://api.exchangerate.host", description="ExchangeRate API 基础URL")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_FOREX_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -332,7 +326,6 @@ class GoldDataSource(BaseSettings):
     wgc_base_url: str = Field(default="https://www.gold.org", description="世界黄金协会网站")
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_GOLD_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -349,7 +342,6 @@ class GPRDataSource(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_GPR_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
@@ -374,85 +366,11 @@ class DataSourceConfig(BaseSettings):
     # 降级策略
     fallback_enabled: bool = Field(default=True, description="是否启用数据源降级")
 
-    # 兼容字段 - 直接访问 URL (TOML [datasource] section)
-    sina_base_url: str | None = Field(default=None)
-    sina_cn_quote: str | None = Field(default=None)
-    eastmoney_quote_api: str | None = Field(default=None)
-    eastmoney_batch_api: str | None = Field(default=None)
-    fund_gz_api: str | None = Field(default=None)
-    frankfurter_base: str | None = Field(default=None)
-    exchangerate_base: str | None = Field(default=None)
-    fred_base_url: str | None = Field(default=None)
-    imf_base_url: str | None = Field(default=None)
-    gpr_data_url: str | None = Field(default=None)
-
     model_config = SettingsConfigDict(
-        env_prefix="FCLI_DATASOURCE_",
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-
-# ============================================================
-# TOML 配置加载（固定使用项目目录）
-# ============================================================
-
-
-def _load_toml_config() -> dict[str, Any]:
-    """加载项目目录下的 config.toml
-
-    Returns:
-        配置字典，如果加载失败返回空字典
-    """
-    if tomllib is None:
-        return {}
-
-    if not PROJECT_CONFIG_PATH.exists():
-        return {}
-
-    try:
-        with open(PROJECT_CONFIG_PATH, "rb") as f:
-            return tomllib.load(f)
-    except Exception as e:
-        import warnings
-
-        warnings.warn(f"Failed to load config from {PROJECT_CONFIG_PATH}: {e}", stacklevel=2)
-        return {}
-
-
-def _merge_toml_to_settings(toml_config: dict[str, Any], settings: Settings) -> None:
-    """将 TOML 配置合并到 Settings 实例
-
-    优先级: 环境变量 > TOML 配置 > 默认值
-    """
-    if not toml_config:
-        return
-
-    # 映射 TOML section 到 Settings 属性
-    section_mapping = {
-        "cache": "cache",
-        "datasource": "datasource",
-        "source": "source",
-        "http": "http",
-        "trading_hours": "trading_hours",
-        "gold": "gold",
-        "display": "display",
-        "proxy": "proxy",
-        "db": "db",
-    }
-
-    for section, attr_name in section_mapping.items():
-        if section in toml_config:
-            section_config = toml_config[section]
-            if hasattr(settings, attr_name):
-                sub_settings = getattr(settings, attr_name)
-                for key, value in section_config.items():
-                    if hasattr(sub_settings, key):
-                        # 只有当环境变量没有设置时才使用 TOML 值
-                        env_key = f"FCLI_{section.upper()}_{key.upper()}"
-                        if env_key not in os.environ:
-                            setattr(sub_settings, key, value)
 
 
 # ============================================================
@@ -462,7 +380,6 @@ def _merge_toml_to_settings(toml_config: dict[str, Any], settings: Settings) -> 
 
 class Settings(BaseSettings):
     data_dir: Path = Field(default=PACKAGE_ROOT / "data")
-    timeout: int = 10
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     trading_hours: TradingHoursSettings = Field(default_factory=TradingHoursSettings)
@@ -483,7 +400,7 @@ class Settings(BaseSettings):
 
 
 # ============================================================
-# 符号解析服务（从 datasource_config.py 合并）
+# 符号解析服务
 # ============================================================
 
 
@@ -506,7 +423,6 @@ class SymbolRegistry:
         Raises:
             ValueError: 不支持的市场类型
         """
-        # 导入 Market 枚举（避免循环导入）
         from .models.base import Market
 
         if market == Market.CN:
@@ -580,10 +496,6 @@ class SymbolRegistry:
 # 创建配置实例
 config = Settings()
 
-# 加载并合并 TOML 配置
-_toml_config = _load_toml_config()
-_merge_toml_to_settings(_toml_config, config)
-
 # 别名
 settings = config
 
@@ -598,7 +510,6 @@ __all__ = [
     "Settings",
     "PACKAGE_ROOT",
     "PROJECT_ENV_PATH",
-    "PROJECT_CONFIG_PATH",
     "symbol_registry",
     "SymbolRegistry",
     # 数据源配置类
