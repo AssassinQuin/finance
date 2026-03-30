@@ -44,7 +44,9 @@ class GoldReserveService:
 
         if Database.is_enabled():
             try:
-                results = await GoldReserveStore.get_latest_with_stats()
+                results = await GoldReserveStore.get_latest_with_stats(
+                    min_date=(date.today() + relativedelta(months=-6)).replace(day=1)
+                )
                 if results:
                     return self._format_stats_results(results)
             except Exception as e:

@@ -1,6 +1,7 @@
 """Gold reserves store - PostgreSQL flat table implementation."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import Any
 
 from ..database import Database
@@ -180,9 +181,14 @@ class GoldReserveStore:
         return {row["country_code"]: row["latest_date"] for row in rows}
 
     @classmethod
-    async def get_latest_with_stats(cls) -> list[dict]:
+    async def get_latest_with_stats(
+        cls,
+        min_date: date | None = None,
+    ) -> list[dict]:
         if not Database.is_enabled():
             return []
+
+        min_report_date = min_date or (date.today() + relativedelta(months=-6))
 
         rows = await Database.fetch_all(
             """
@@ -191,6 +197,7 @@ class GoldReserveStore:
                     country_code, country_name,
                     gold_tonnes, report_date, data_source
                 FROM gold_reserves
+                WHERE report_date >= $1
                 ORDER BY country_code, report_date DESC
             ),
             yoy AS (
@@ -236,10 +243,13 @@ class GoldReserveStore:
                 data_source, yoy_change, ytd_change,
                 monthly_trend, trend_r2, data_points
             FROM trend
-            WHERE gold_tonnes > 0
+            WHERE report_date >= $2
             ORDER BY gold_tonnes DESC
-            """
+            """,
+            min_report_date,
+            min_report_date,
         )
+
         return [dict(row) for row in rows]
 
     @classmethod
