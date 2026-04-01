@@ -80,8 +80,3 @@ def is_trading_hours(market: Market, check_time: datetime | None = None) -> bool
 
     return False
 
-
-def get_cache_ttl(market: Market, check_time: datetime | None = None) -> int:
-    if is_trading_hours(market, check_time):
-        return config.cache.quote_ttl_trading
-    return config.cache.quote_ttl

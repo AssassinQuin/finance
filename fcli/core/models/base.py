@@ -1,4 +1,4 @@
-"""Base enums and types shared across models."""
+﻿"""Base enums and types shared across models."""
 
 from enum import Enum
 
@@ -6,13 +6,10 @@ from enum import Enum
 class Market(str, Enum):
     """Market/region enumeration."""
 
-    CN = "CN"  # A-share
-    HK = "HK"  # Hong Kong
-    US = "US"  # US Stocks
-    FUND = "FUND"  # China Funds
-    GLOBAL = "GLOBAL"  # Global Indices/Forex
-    FOREX = "FOREX"
-    BOND = "BOND"
+    CN = "CN"
+    HK = "HK"
+    US = "US"
+    GLOBAL = "GLOBAL"
 
 
 class AssetType(str, Enum):
@@ -23,3 +20,4 @@ class AssetType(str, Enum):
     INDEX = "INDEX"
     FOREX = "FOREX"
     BOND = "BOND"
+    GOLD = "GOLD"

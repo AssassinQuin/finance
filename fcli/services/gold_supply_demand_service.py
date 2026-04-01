@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 from datetime import datetime
 from typing import Any
 
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class GoldSupplyDemandService:
     """Service for gold supply and demand data."""
 
-    def __init__(self):
-        self._wgc_scraper = WGCScraper()
+    def __init__(self, wgc_scraper: WGCScraper | None = None):
+        self._wgc_scraper = wgc_scraper or WGCScraper()
 
     async def fetch_global_supply_demand(self, force_update: bool = False) -> dict | None:
         """Fetch global gold supply/demand data.

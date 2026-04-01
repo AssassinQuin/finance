@@ -1,14 +1,15 @@
-"""Market command - fund search and detail."""
+﻿"""Market command - fund search and detail."""
 
 from typing import Annotated
 
 import typer
 
+from ..core.config import config
 from ..core.database import Database
 from ..core.models import Fund, FundDetail, FundType
 from ..core.stores import FundStore
 from ..infra.http_client import run_async
-from ..services.fund_service import fund_service
+from ..core.container import container
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="基金市场", context_settings={"help_option_names": ["-h", "--help"]})
@@ -103,54 +104,24 @@ def update(
 
 async def _search_funds(query: str, fund_type: FundType | None, limit: int) -> list[Fund]:
     """Search funds from database."""
-    await Database.init()
-    try:
+    async with Database.session(config):
         funds = await FundStore.search(query, fund_type, limit)
         return funds
-    finally:
-        await Database.close()
 
 
 async def _get_fund_detail(code: str) -> FundDetail | None:
     """Get fund detail from database or scrape."""
-    await Database.init()
-    try:
+    async with Database.session(config):
         fund = await FundStore.get_by_code(code)
         if not fund:
             return None
 
         scale_history = await FundStore.get_scale_history(code)
-
-        return FundDetail(
-            code=fund.code,
-            name=fund.name,
-            name_short=fund.name_short,
-            fund_type=fund.fund_type,
-            market=fund.market,
-            invest_type=fund.invest_type,
-            management_fee=fund.management_fee,
-            custody_fee=fund.custody_fee,
-            fund_company=fund.fund_company,
-            tracking_index=fund.tracking_index,
-            inception_date=fund.inception_date,
-            listing_date=fund.listing_date,
-            scale=fund.scale,
-            share=fund.share,
-            nav=fund.nav,
-            scale_date=fund.scale_date,
-            is_active=fund.is_active,
-            extra=fund.extra,
-            scale_history=scale_history,
-        )
-    finally:
-        await Database.close()
+        return FundDetail.from_fund(fund, scale_history)
 
 
 async def _update_fund_data(type: str | None, force: bool) -> int:
     """Update fund data from scraper."""
-    await Database.init()
-    try:
-        count = await fund_service.update_fund_data(type, force=force)
+    async with Database.session(config):
+        count = await container.fund_service.update_fund_data(type, force=force)
         return count
-    finally:
-        await Database.close()

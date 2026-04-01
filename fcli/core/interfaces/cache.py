@@ -1,53 +1,43 @@
-"""Cache interface definitions."""
+﻿"""Cache Abstract Interface."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol
-
-
-class ICache(Protocol):
-    """Cache interface - Protocol for type checking."""
-
-    def get(self, key: str) -> Any | None: ...
-    def set(self, key: str, data: Any, ttl: int) -> None: ...
-    def delete(self, key: str) -> None: ...
-    def clear(self) -> None: ...
-    async def async_get(self, key: str) -> Any | None: ...
-    async def async_set(self, key: str, data: Any, ttl: int) -> None: ...
-    async def async_delete(self, key: str) -> None: ...
-    async def async_clear(self) -> None: ...
+from typing import Any
 
 
 class CacheABC(ABC):
-    """Cache abstract base class - for runtime enforcement."""
+    """Abstract base class for cache implementations."""
 
     @abstractmethod
     def get(self, key: str) -> Any | None:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
-    def set(self, key: str, data: Any, ttl: int) -> None:
-        raise NotImplementedError
+    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+        pass
 
     @abstractmethod
     def delete(self, key: str) -> None:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def clear(self) -> None:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     async def async_get(self, key: str) -> Any | None:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
-    async def async_set(self, key: str, data: Any, ttl: int) -> None:
-        raise NotImplementedError
+    async def async_set(self, key: str, value: Any, ttl: int | None = None) -> None:
+        pass
 
     @abstractmethod
     async def async_delete(self, key: str) -> None:
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     async def async_clear(self) -> None:
-        raise NotImplementedError
+        pass
+
+
+__all__ = ["CacheABC"]

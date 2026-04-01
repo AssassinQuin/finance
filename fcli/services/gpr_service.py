@@ -1,4 +1,4 @@
-"""
+﻿"""
 GPR (地缘政治风险指数) 服务模块
 """
 
@@ -8,7 +8,7 @@ from datetime import date
 
 from dateutil.relativedelta import relativedelta
 
-from ..core.config import settings
+from ..core.config import Settings, settings
 from ..core.database import Database
 from ..core.models import GPRHistory
 from ..core.stores import GPRHistoryStore
@@ -18,13 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 class GPRService:
-    def __init__(self):
-        self.storage_file = settings.data_dir / "gpr_history.json"
+    def __init__(
+        self,
+        config: Settings | None = None,
+        gpr_scraper: GPRScraper | None = None,
+    ):
+        self._config = config or settings
+        self._gpr_scraper = gpr_scraper
+        self.storage_file = self._config.data_dir / "gpr_history.json"
         self._ensure_storage()
 
     def _ensure_storage(self):
-        if not settings.data_dir.exists():
-            settings.data_dir.mkdir(parents=True)
+        if not self._config.data_dir.exists():
+            self._config.data_dir.mkdir(parents=True)
 
     async def _check_and_update_stale_data(self) -> None:
         if not Database.is_enabled():
@@ -130,7 +136,8 @@ class GPRService:
         try:
             logger.info("Starting GPR data update...")
 
-            async with GPRScraper() as scraper:
+            scraper = self._gpr_scraper or GPRScraper()
+            async with scraper:
                 raw_data = await scraper.fetch_gpr_data()
                 logger.info(f"Fetched {len(raw_data)} GPR data points from remote")
 

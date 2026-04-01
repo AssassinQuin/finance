@@ -1,12 +1,11 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 import typer
 
 from ..core.config import config
+from ..core.container import container
 from ..core.database import Database
 from ..infra.http_client import run_async
-from ..services.gold_reserve_service import gold_reserve_service
-from ..services.gold_supply_demand_service import gold_supply_demand_service
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="黄金数据", context_settings={"help_option_names": ["-h", "--help"]})
@@ -28,18 +27,17 @@ def reserves(
 
 
 async def _reserves(update: bool) -> None:
-    try:
-        await Database.init(config)
+    async with Database.session(config):
         status_msg = "强制更新数据..." if update else "获取黄金储备数据..."
         with ConsolePresenter.status(status_msg):
-            reserves = await gold_reserve_service.fetch_all_with_auto_update(force=update)
+            reserves = await container.gold_reserve_service.fetch_all_with_auto_update(force=update)
 
         if not reserves:
             ConsolePresenter.print_warning("无法获取黄金储备数据")
             return
 
         with ConsolePresenter.status("获取供需数据..."):
-            balance = await gold_supply_demand_service.fetch_global_supply_demand()
+            balance = await container.gold_supply_demand_service.fetch_global_supply_demand()
 
         ConsolePresenter.print_gold_report(
             {
@@ -48,8 +46,6 @@ async def _reserves(update: bool) -> None:
                 "last_update": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
         )
-    finally:
-        await Database.close()
 
 
 @app.command()
@@ -63,13 +59,10 @@ def supply():
 
 
 async def _supply():
-    try:
-        await Database.init(config)
+    async with Database.session(config):
         with ConsolePresenter.status("获取黄金供需数据..."):
-            balance = await gold_supply_demand_service.fetch_global_supply_demand()
+            balance = await container.gold_supply_demand_service.fetch_global_supply_demand()
         if balance:
             ConsolePresenter.print_gold_supply_balance(balance)
         else:
             ConsolePresenter.print_warning("无法获取黄金供需数据")
-    finally:
-        await Database.close()

@@ -1,4 +1,4 @@
-"""PostgreSQL database connection pool manager.
+﻿"""PostgreSQL database connection pool manager.
 
 Replaces MySQL (aiomysql) with PostgreSQL (asyncpg) for "Just Use Postgres" architecture.
 
@@ -219,6 +219,21 @@ class Database:
             raise DatabaseError("Database not enabled")
 
         return _TransactionContext(cls._pool)
+
+    @classmethod
+    @asynccontextmanager
+    async def session(cls, config_obj=None):
+        """Async context manager that handles DB init/close lifecycle.
+
+        Usage:
+            async with Database.session(config) as db:
+                rows = await db.fetch_all("SELECT * FROM table")
+        """
+        await cls.init(config_obj)
+        try:
+            yield cls
+        finally:
+            await cls.close()
 
     @classmethod
     def row_to_dict(cls, row: asyncpg.Record | None) -> dict | None:

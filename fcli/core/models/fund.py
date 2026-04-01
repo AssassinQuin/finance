@@ -1,4 +1,4 @@
-"""Fund market data models."""
+﻿"""Fund market data models."""
 
 from datetime import date, datetime
 from enum import Enum
@@ -77,3 +77,7 @@ class FundDetail(Fund):
     """Extended fund detail with scale history."""
 
     scale_history: list[FundScale] = Field(default_factory=list, description="Recent scale history")
+
+    @classmethod
+    def from_fund(cls, fund: Fund, scale_history: list[FundScale] | None = None) -> "FundDetail":
+        return cls(**fund.model_dump(), scale_history=scale_history or [])

@@ -2,7 +2,6 @@ import asyncio
 import atexit
 import json
 import logging
-import weakref
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
@@ -16,34 +15,18 @@ T = TypeVar("T")
 
 
 class HttpClient:
-    _instance: weakref.ReferenceType["HttpClient"] | None = None
-    _cleanup_registered = False
-
-    def __new__(cls):
-        instance = super().__new__(cls)
-        cls._instance = weakref.ref(instance)
-        return instance
-
     def __init__(self):
         self.session: aiohttp.ClientSession | None = None
         self._semaphore: asyncio.Semaphore | None = None
-        self._register_cleanup()
+        atexit.register(self._sync_cleanup)
 
-    def _register_cleanup(self):
-        if not HttpClient._cleanup_registered:
-            atexit.register(self._sync_cleanup)
-            HttpClient._cleanup_registered = True
-
-    @staticmethod
-    def _sync_cleanup():
+    def _sync_cleanup(self):
         try:
             loop = asyncio.get_event_loop()
             if loop is None or loop.is_closed():
                 return
-            if HttpClient._instance is not None:
-                client = HttpClient._instance()
-                if client is not None and client.session and not client.session.closed:
-                    loop.run_until_complete(client._async_close())
+            if self.session and not self.session.closed:
+                loop.run_until_complete(self._async_close())
         except Exception as e:
             logger.debug(f"Error during HTTP client cleanup: {e}")
 
@@ -169,13 +152,6 @@ class HttpClient:
     async def close(self):
         await self._async_close()
 
-    @classmethod
-    async def cleanup_all(cls):
-        if cls._instance is not None:
-            client = cls._instance()
-            if client is not None:
-                await client._async_close()
-
 
 def run_async(coro: Coroutine[Any, Any, T]) -> T:
     """Run async coroutine with automatic HTTP client cleanup.
@@ -196,7 +172,7 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
             raise
         finally:
             try:
-                await HttpClient.cleanup_all()
+                await http_client.close()
             except Exception:
                 logger.exception("Error during HTTP client cleanup")
 

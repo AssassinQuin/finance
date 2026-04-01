@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 class FundService:
     """Service for fund data operations."""
 
-    def __init__(self):
-        self.scraper = FundScraper()
+    def __init__(self, fund_scraper: FundScraper | None = None):
+        self.scraper = fund_scraper or FundScraper()
 
     async def needs_monthly_update(self) -> bool:
         """Check if monthly update is needed."""
@@ -24,9 +24,7 @@ class FundService:
             return False
 
         try:
-            row = await Database.fetch_one(
-                "SELECT MAX(updated_at) as last_update FROM dim_fund"
-            )
+            row = await Database.fetch_one("SELECT MAX(updated_at) as last_update FROM funds")
             if not row or not row.get("last_update"):
                 return True
 

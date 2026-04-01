@@ -1,4 +1,4 @@
-"""
+﻿"""
 汇率查询服务
 支持 Frankfurter API (欧洲央行汇率) 和 ExchangeRate-API
 """
@@ -6,15 +6,25 @@
 import asyncio
 from datetime import datetime
 
-from ..core.cache import cache
-from ..core.config import config
+from ..core.cache import HybridCache, cache
+from ..core.config import Settings, config
 from ..core.models import ExchangeRate
 from ..core.stores.exchange_rate import ExchangeRateStore
-from ..infra.http_client import http_client
+from ..infra.http_client import HttpClient, http_client
 
 
 class ForexService:
     """汇率查询服务"""
+
+    def __init__(
+        self,
+        cache: HybridCache | None = None,
+        config: Settings | None = None,
+        http_client: HttpClient | None = None,
+    ):
+        self._cache = cache or cache
+        self._config = config or config
+        self._http_client = http_client or http_client
 
     COMMON_CURRENCIES = {
         "USD": "美元",
@@ -41,11 +51,11 @@ class ForexService:
         quote_currency = quote_currency.upper()
 
         cache_key = f"forex:{base_currency}:{quote_currency}"
-        cached = await cache.async_get(cache_key)
+        cached = await self._cache.async_get(cache_key)
         if cached:
             return ExchangeRate(**cached)
 
-        for source in config.datasource.forex_priority:
+        for source in self._config.datasource.forex_priority:
             try:
                 if source == "frankfurter":
                     rate = await self._fetch_frankfurter(base_currency, quote_currency)
@@ -55,7 +65,7 @@ class ForexService:
                     continue
 
                 if rate:
-                    await cache.async_set(
+                    await self._cache.async_set(
                         cache_key,
                         {
                             "base_currency": rate.base_currency,
@@ -64,13 +74,13 @@ class ForexService:
                             "source": rate.source,
                             "update_time": rate.update_time.isoformat() if rate.update_time else None,
                         },
-                        config.cache.forex_ttl,
+                        self._config.cache.forex_ttl,
                     )
                     await ExchangeRateStore.save(rate)
                     return rate
 
             except Exception:
-                if not config.datasource.fallback_enabled:
+                if not self._config.datasource.fallback_enabled:
                     raise
                 continue
 
@@ -78,13 +88,13 @@ class ForexService:
 
     async def _fetch_frankfurter(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 Frankfurter API 获取汇率 (欧洲央行数据)"""
-        url = f"{config.datasource.forex.frankfurter_base_url}/latest"
+        url = f"{self._config.datasource.forex.frankfurter_base_url}/latest"
         params = {
             "from": base_currency,
             "to": quote_currency,
         }
 
-        data = await http_client.fetch(url, params=params)
+        data = await self._http_client.fetch(url, params=params)
 
         if not data or "rates" not in data:
             return None
@@ -106,9 +116,9 @@ class ForexService:
 
     async def _fetch_exchangerate(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """从 ExchangeRate-API 获取汇率"""
-        url = f"{config.datasource.forex.exchangerate_base_url}/v6/latest/{base_currency}"
+        url = f"{self._config.datasource.forex.exchangerate_base_url}/v6/latest/{base_currency}"
 
-        data = await http_client.fetch(url)
+        data = await self._http_client.fetch(url)
 
         if not data or "rates" not in data:
             return None
@@ -131,7 +141,7 @@ class ForexService:
         rates = {}
 
         cache_key = f"forex:all:{base_currency}"
-        cached = cache.get(cache_key)
+        cached = self._cache.get(cache_key)
         if cached:
             for code, data in cached.items():
                 rates[code] = ExchangeRate(**data)
@@ -158,7 +168,7 @@ class ForexService:
             }
             for code, rate in rates.items()
         }
-        cache.set(cache_key, cache_data, config.cache.forex_ttl)
+        self._cache.set(cache_key, cache_data, self._config.cache.forex_ttl)
 
         return rates
 

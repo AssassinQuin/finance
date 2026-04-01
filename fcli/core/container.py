@@ -1,15 +1,28 @@
-"""Dependency injection container.
+﻿"""Dependency injection container.
 
 Centralized management of all service dependencies for decoupling and testability.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from ..infra.http_client import HttpClient, http_client
 from .cache import HybridCache
-from .cache_strategy import AssetTypeCacheStrategy, ICacheStrategy
+from .cache_strategy import AssetTypeCacheStrategy, CacheStrategyBase
 from .config import Settings, config
-from .interfaces.cache import ICache
-from .interfaces.storage import IStorage
+from .interfaces.cache import CacheABC
+from .interfaces.storage import StorageABC
 from .storage import HybridStorage
+
+if TYPE_CHECKING:
+    from ..services.forex_service import ForexService
+    from ..services.fund_service import FundService
+    from ..services.gold_reserve_service import GoldReserveService
+    from ..services.gold_supply_demand_service import GoldSupplyDemandService
+    from ..services.gpr_service import GPRService
+    from ..services.quote_service import QuoteService
+    from ..services.watchlist_service import WatchlistService
 
 
 class Container:
@@ -24,28 +37,30 @@ class Container:
     def __init__(self, settings: Settings | None = None):
         self._config = settings or config
 
-        self._cache: ICache | None = None
-        self._storage: IStorage | None = None
+        self._cache: CacheABC | None = None
+        self._storage: StorageABC | None = None
         self._http_client: HttpClient | None = None
-        self._cache_strategy: ICacheStrategy | None = None
-        self._quote_service = None
-        self._gold_reserve_service = None
-        self._gold_supply_demand_service = None
-        self._forex_service = None
-        self._gpr_service = None
+        self._cache_strategy: CacheStrategyBase | None = None
+        self._quote_service: QuoteService | None = None
+        self._gold_reserve_service: GoldReserveService | None = None
+        self._gold_supply_demand_service: GoldSupplyDemandService | None = None
+        self._forex_service: ForexService | None = None
+        self._gpr_service: GPRService | None = None
+        self._fund_service: FundService | None = None
+        self._watchlist_service: WatchlistService | None = None
 
     @property
     def config(self) -> Settings:
         return self._config
 
     @property
-    def cache(self) -> ICache:
+    def cache(self) -> CacheABC:
         if self._cache is None:
             self._cache = HybridCache()
         return self._cache
 
     @property
-    def storage(self) -> IStorage:
+    def storage(self) -> StorageABC:
         if self._storage is None:
             self._storage = HybridStorage()
         return self._storage
@@ -57,13 +72,13 @@ class Container:
         return self._http_client
 
     @property
-    def cache_strategy(self) -> ICacheStrategy:
+    def cache_strategy(self) -> CacheStrategyBase:
         if self._cache_strategy is None:
             self._cache_strategy = AssetTypeCacheStrategy.from_config(self._config)
         return self._cache_strategy
 
     @property
-    def quote_service(self):
+    def quote_service(self) -> QuoteService:
         if self._quote_service is None:
             from ..services.quote_service import QuoteService
             from ..services.scrapers.fund_quote_source import FundQuoteSource
@@ -88,15 +103,17 @@ class Container:
         return self._quote_service
 
     @property
-    def gold_reserve_service(self):
+    def gold_reserve_service(self) -> GoldReserveService:
         if self._gold_reserve_service is None:
             from ..services.gold_reserve_service import GoldReserveService
 
-            self._gold_reserve_service = GoldReserveService()
+            self._gold_reserve_service = GoldReserveService(
+                config=self._config,
+            )
         return self._gold_reserve_service
 
     @property
-    def gold_supply_demand_service(self):
+    def gold_supply_demand_service(self) -> GoldSupplyDemandService:
         if self._gold_supply_demand_service is None:
             from ..services.gold_supply_demand_service import GoldSupplyDemandService
 
@@ -104,20 +121,44 @@ class Container:
         return self._gold_supply_demand_service
 
     @property
-    def forex_service(self):
+    def forex_service(self) -> ForexService:
         if self._forex_service is None:
             from ..services.forex_service import ForexService
 
-            self._forex_service = ForexService()
+            self._forex_service = ForexService(
+                cache=self.cache,
+                config=self._config,
+                http_client=self.http_client,
+            )
         return self._forex_service
 
     @property
-    def gpr_service(self):
+    def gpr_service(self) -> GPRService:
         if self._gpr_service is None:
             from ..services.gpr_service import GPRService
 
-            self._gpr_service = GPRService()
+            self._gpr_service = GPRService(
+                config=self._config,
+            )
         return self._gpr_service
+
+    @property
+    def fund_service(self) -> FundService:
+        if self._fund_service is None:
+            from ..services.fund_service import FundService
+
+            self._fund_service = FundService()
+        return self._fund_service
+
+    @property
+    def watchlist_service(self) -> WatchlistService:
+        if self._watchlist_service is None:
+            from ..services.watchlist_service import WatchlistService
+
+            self._watchlist_service = WatchlistService(
+                storage=self.storage,
+            )
+        return self._watchlist_service
 
     async def cleanup(self):
         if self._http_client is not None:

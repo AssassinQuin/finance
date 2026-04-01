@@ -1,4 +1,4 @@
-"""Gold reserve data service.
+﻿"""Gold reserve data service.
 
 Provides gold reserve data access with database-first strategy
 and IMF API fallback.
@@ -10,7 +10,7 @@ from typing import Any
 
 from dateutil.relativedelta import relativedelta
 
-from ..core.config import config
+from ..core.config import Settings, config
 from ..core.database import Database
 from ..core.models.gold import GoldReserve
 from ..core.stores.gold import GoldReserveStore
@@ -22,8 +22,13 @@ logger = logging.getLogger(__name__)
 class GoldReserveService:
     """Service for accessing gold reserve data."""
 
-    def __init__(self):
-        self._imf_scraper = IMFScraper()
+    def __init__(
+        self,
+        config: Settings | None = None,
+        imf_scraper: IMFScraper | None = None,
+    ):
+        self._config = config
+        self._imf_scraper = imf_scraper or IMFScraper()
 
     async def fetch_all_with_auto_update(self, force: bool = False) -> list[dict]:
         """Fetch latest gold reserves with auto-update.

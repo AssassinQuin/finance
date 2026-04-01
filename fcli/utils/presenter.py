@@ -1,4 +1,4 @@
-import plotext as plt
+﻿import plotext as plt
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -9,20 +9,32 @@ from ..core.models import Asset, ExchangeRate, Fund, FundDetail, Quote
 
 console = Console()
 
-_MARKET_MAP: dict[str, str] = config.display.market_map if config.display.market_map else {}
-_TYPE_MAP: dict[str, str] = config.display.type_map if config.display.type_map else {}
-_TYPE_COLOR: dict[str, str] = config.display.type_color if config.display.type_color else {}
+_display_cache: dict[str, dict[str, str]] | None = None
+
+
+def _get_display_maps() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    global _display_cache
+    if _display_cache is None:
+        d = config.display
+        _display_cache = {
+            "market": d.market_map if d.market_map else {},
+            "type": d.type_map if d.type_map else {},
+            "color": d.type_color if d.type_color else {},
+        }
+    return _display_cache["market"], _display_cache["type"], _display_cache["color"]
 
 
 class ConsolePresenter:
     @staticmethod
     def _get_market_display(market_value: str) -> str:
-        return _MARKET_MAP.get(market_value, market_value)
+        market_map, _, _ = _get_display_maps()
+        return market_map.get(market_value, market_value)
 
     @staticmethod
     def _get_type_display(type_value: str) -> tuple[str, str]:
-        type_cn = _TYPE_MAP.get(type_value, type_value)
-        type_color = _TYPE_COLOR.get(type_value, "white")
+        _, type_map, type_color = _get_display_maps()
+        type_cn = type_map.get(type_value, type_value)
+        type_color = type_color.get(type_value, "white")
         return type_cn, type_color
 
     @staticmethod
@@ -203,75 +215,26 @@ class ConsolePresenter:
 
         balance = data.get("balance", {})
         if balance:
-            balance_table = Table(
-                box=box.SIMPLE,
-                header_style="bold cyan",
-                title=f"全球黄金供需平衡表 ({balance.get('period', 'N/A')})",
-            )
-            balance_table.add_column("项目", justify="left")
-            balance_table.add_column("供应 (吨)", justify="right", style="green")
-            balance_table.add_column("项目", justify="left")
-            balance_table.add_column("需求 (吨)", justify="right", style="red")
-
-            supply = balance.get("supply", {})
-            demand = balance.get("demand", {})
-
-            rows = [
-                (
-                    "矿产金",
-                    supply.get("mine_production"),
-                    "金饰需求",
-                    demand.get("jewelry"),
-                ),
-                (
-                    "回收金",
-                    supply.get("recycling"),
-                    "科技工业",
-                    demand.get("technology"),
-                ),
-                (
-                    "净套期保值",
-                    supply.get("net_hedging"),
-                    "投资需求",
-                    demand.get("investment", {}).get("total"),
-                ),
-                ("", None, "央行净购入", demand.get("central_banks")),
-                ("总供应", supply.get("total"), "总需求", demand.get("total")),
-            ]
-
-            for s_name, s_val, d_name, d_val in rows:
-                s_val_str = f"{s_val:.1f}" if s_val is not None else ""
-                d_val_str = f"{d_val:.1f}" if d_val is not None else ""
-                balance_table.add_row(s_name, s_val_str, d_name, d_val_str)
-
+            balance_table = ConsolePresenter._build_supply_demand_table(balance)
             console.print(balance_table)
 
         if data.get("last_update"):
             console.print(f"\n[dim]最后更新时间: {data['last_update']}[/dim]")
 
     @staticmethod
-    def print_gold_supply_balance(balance: dict):
-        """打印黄金供需平衡表 (独立显示)
+    def _build_supply_demand_table(balance: dict) -> Table:
+        supply = balance.get("supply", {})
+        demand = balance.get("demand", {})
 
-        Args:
-            balance: 供需数据字典，包含 supply, demand, period 字段
-        """
-        if not balance:
-            ConsolePresenter.print_warning("暂无黄金供需数据")
-            return
-
-        balance_table = Table(
+        table = Table(
             box=box.SIMPLE,
             header_style="bold cyan",
             title=f"全球黄金供需平衡表 ({balance.get('period', 'N/A')})",
         )
-        balance_table.add_column("项目", justify="left")
-        balance_table.add_column("供应 (吨)", justify="right", style="green")
-        balance_table.add_column("项目", justify="left")
-        balance_table.add_column("需求 (吨)", justify="right", style="red")
-
-        supply = balance.get("supply", {})
-        demand = balance.get("demand", {})
+        table.add_column("项目", justify="left")
+        table.add_column("供应 (吨)", justify="right", style="green")
+        table.add_column("项目", justify="left")
+        table.add_column("需求 (吨)", justify="right", style="red")
 
         rows = [
             (
@@ -299,8 +262,17 @@ class ConsolePresenter:
         for s_name, s_val, d_name, d_val in rows:
             s_val_str = f"{s_val:.1f}" if s_val is not None else ""
             d_val_str = f"{d_val:.1f}" if d_val is not None else ""
-            balance_table.add_row(s_name, s_val_str, d_name, d_val_str)
+            table.add_row(s_name, s_val_str, d_name, d_val_str)
 
+        return table
+
+    @staticmethod
+    def print_gold_supply_balance(balance: dict):
+        if not balance:
+            ConsolePresenter.print_warning("暂无黄金供需数据")
+            return
+
+        balance_table = ConsolePresenter._build_supply_demand_table(balance)
         console.print(Panel(balance_table, title="[bold yellow]黄金供需数据[/bold yellow]", border_style="yellow"))
 
     @staticmethod

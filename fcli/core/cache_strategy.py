@@ -1,4 +1,4 @@
-"""缓存策略抽象层
+﻿"""缓存策略抽象层
 
 提供基于资产类型的动态TTL策略，支持：
 - 不同资产类型使用不同缓存时长
@@ -8,38 +8,15 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Protocol
 
-from .config import config
 from .models.base import AssetType, Market
-
-
-class ICacheStrategy(Protocol):
-    """缓存策略协议"""
-
-    def get_ttl(
-        self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None
-    ) -> int:
-        """获取缓存TTL（秒）
-
-        Args:
-            asset_type: 资产类型
-            market: 市场（可选，用于交易时段判断）
-            check_time: 检查时间（可选，默认当前时间）
-
-        Returns:
-            TTL 秒数
-        """
-        ...
 
 
 class CacheStrategyBase(ABC):
     """缓存策略抽象基类"""
 
     @abstractmethod
-    def get_ttl(
-        self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None
-    ) -> int:
+    def get_ttl(self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None) -> int:
         """获取缓存TTL（秒）"""
         pass
 
@@ -58,27 +35,29 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
     # 默认TTL配置（秒）
     DEFAULT_TTLS = {
         AssetType.STOCK: {
-            "trading": 30,  # 交易时段 30秒
-            "non_trading": 300,  # 非交易时段 5分钟
+            "trading": 30,
+            "non_trading": 300,
         },
         AssetType.FUND: {
-            "trading": 60,  # 基金交易时段 1分钟
-            "non_trading": 300,  # 非交易时段 5分钟
+            "trading": 60,
+            "non_trading": 300,
         },
         AssetType.INDEX: {
-            "trading": 30,  # 指数交易时段 30秒
-            "non_trading": 300,  # 非交易时段 5分钟
+            "trading": 30,
+            "non_trading": 300,
         },
         AssetType.FOREX: {
-            "default": 3600,  # 外汇 1小时
+            "default": 3600,
         },
         AssetType.BOND: {
-            "default": 7200,  # 债券 2小时
+            "default": 7200,
+        },
+        AssetType.GOLD: {
+            "default": 86400,
         },
     }
 
-    # 黄金数据按天缓存（月度发布）
-    GOLD_TTL = 86400  # 1天
+    GOLD_TTL = 86400
 
     def __init__(
         self,
@@ -124,12 +103,12 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
             AssetType.BOND: {
                 "default": bond_ttl,
             },
+            AssetType.GOLD: {
+                "default": gold_ttl,
+            },
         }
-        self._gold_ttl = gold_ttl
 
-    def get_ttl(
-        self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None
-    ) -> int:
+    def get_ttl(self, asset_type: AssetType, market: Market | None = None, check_time: datetime | None = None) -> int:
         """获取缓存TTL
 
         Args:
@@ -140,12 +119,6 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
         Returns:
             TTL 秒数
         """
-        # 黄金数据特殊处理（按天缓存）
-        if asset_type == AssetType.STOCK and market == Market.GLOBAL:
-            # 全球指数（如黄金指数）使用较长缓存
-            return self._gold_ttl
-
-        # 获取该资产类型的TTL配置
         ttl_config = self._ttls.get(asset_type)
 
         if ttl_config is None:
@@ -186,7 +159,3 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
             bond_ttl=getattr(config.cache, "bond_ttl", 7200),
             gold_ttl=getattr(config.cache, "gold_ttl", 86400),
         )
-
-
-# 从配置加载默认缓存策略
-default_cache_strategy = AssetTypeCacheStrategy.from_config(config)

@@ -1,4 +1,4 @@
-"""Quote Service - 行情查询服务
+﻿"""Quote Service - 行情查询服务
 
 重构说明:
 - 使用依赖注入模式，通过构造函数传入依赖
@@ -11,10 +11,10 @@ import re
 from datetime import datetime
 from typing import Any
 
-from ..core.cache_strategy import ICacheStrategy
+from ..core.cache_strategy import CacheStrategyBase
 from ..core.config import Settings
-from ..core.interfaces.cache import ICache
-from ..core.interfaces.source import IQuoteSource
+from ..core.interfaces.cache import CacheABC
+from ..core.interfaces.source import QuoteSourceABC
 from ..core.models import Asset, AssetType, Market, Quote
 from ..core.stores.quote import QuoteStore
 from ..infra.http_client import HttpClient
@@ -30,21 +30,21 @@ class QuoteService:
     以及数据源列表 sources，实现解耦和策略模式。
 
     Args:
-        cache: 缓存实例 (ICache)
+        cache: 缓存实例 (CacheABC)
         config: 配置实例 (Settings)
         http_client: HTTP 客户端实例 (HttpClient)
-        cache_strategy: 缓存策略实例 (ICacheStrategy)
-        sources: 数据源列表 (List[IQuoteSource])
+        cache_strategy: 缓存策略实例 (CacheStrategyBase)
+        sources: 数据源列表 (List[QuoteSourceABC])
     """
 
     def __init__(
         self,
-        cache: ICache,
+        cache: CacheABC,
         config: Settings,
         http_client: HttpClient,
-        cache_strategy: ICacheStrategy,
-        sources: list[IQuoteSource] | None = None,
-        fund_source: IQuoteSource | None = None,
+        cache_strategy: CacheStrategyBase,
+        sources: list[QuoteSourceABC] | None = None,
+        fund_source: QuoteSourceABC | None = None,
     ):
         self._cache = cache
         self._config = config

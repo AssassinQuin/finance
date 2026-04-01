@@ -1,4 +1,4 @@
-import json
+﻿import json
 from datetime import datetime
 
 from ..database import Database
@@ -16,13 +16,15 @@ class WatchlistAssetStore:
         elif extra_data is None:
             extra_data = {}
 
+        market_val = row.get("market", "")
+        type_val = row.get("type", "")
         return WatchlistAssetDB(
             id=row.get("id"),
             code=row.get("code", ""),
             api_code=row.get("api_code", ""),
             name=row.get("name", ""),
-            market=row.get("market", ""),
-            type=row.get("type", ""),
+            market=Market(market_val) if market_val else Market.CN,
+            type=AssetType(type_val) if type_val else AssetType.STOCK,
             extra=extra_data,
             is_active=bool(row.get("is_active", True)),
             added_at=row.get("added_at"),
@@ -36,8 +38,8 @@ class WatchlistAssetStore:
             code=db_asset.code,
             api_code=db_asset.api_code,
             name=db_asset.name,
-            market=Market(db_asset.market) if db_asset.market else Market.CN,
-            type=AssetType(db_asset.type) if db_asset.type else AssetType.STOCK,
+            market=db_asset.market,
+            type=db_asset.type,
             added_at=db_asset.added_at or datetime.now(),
             extra=db_asset.extra,
         )
@@ -49,8 +51,8 @@ class WatchlistAssetStore:
             code=asset.code,
             api_code=asset.api_code,
             name=asset.name,
-            market=asset.market.value,
-            type=asset.type.value,
+            market=asset.market,
+            type=asset.type,
             extra=asset.extra,
             is_active=True,
             added_at=asset.added_at,

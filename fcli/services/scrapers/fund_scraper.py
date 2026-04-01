@@ -2,30 +2,35 @@
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from ...core.models import Fund, FundType, InvestType
+from .base import BaseScraper, ScraperResult
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ScrapeResult:
-    """Result of a scraping operation."""
-
-    success: bool
-    data: list[Fund] | None = None
-    error_message: str | None = None
-    total_count: int = 0
-
-
-class FundScraper:
+class FundScraper(BaseScraper[Fund]):
     """Scraper for fund data using AKShare."""
 
-    async def scrape_funds(self, fund_type: FundType | None = None) -> ScrapeResult:
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def source_name(self) -> str:
+        return "AKShare"
+
+    async def fetch(self) -> Any:
+        return await self.scrape_funds(None)
+
+    def parse(self, raw_data: Any) -> list[Fund]:
+        if isinstance(raw_data, ScraperResult) and raw_data.success:
+            return raw_data.data
+        return []
+
+    async def scrape_funds(self, fund_type: FundType | None = None) -> ScraperResult[Fund]:
         """Scrape funds by type."""
         try:
             if fund_type == FundType.INDEX:
@@ -35,7 +40,6 @@ class FundScraper:
             elif fund_type == FundType.FUND:
                 return await self._scrape_off_exchange_funds()
             else:
-                # Scrape all types
                 all_funds: list[Fund] = []
 
                 result = await self._scrape_index_funds()
@@ -50,17 +54,16 @@ class FundScraper:
                 if result.success and result.data:
                     all_funds.extend(result.data)
 
-                return ScrapeResult(success=True, data=all_funds, total_count=len(all_funds))
+                return ScraperResult(success=True, data=all_funds, source="AKShare")
         except Exception as e:
             logger.error(f"Failed to scrape funds: {e}")
-            return ScrapeResult(success=False, error_message=str(e))
+            return ScraperResult(success=False, source="AKShare", error_message=str(e))
 
-    async def _scrape_index_funds(self) -> ScrapeResult:
+    async def _scrape_index_funds(self) -> ScraperResult[Fund]:
         """Scrape index funds from AKShare."""
         try:
             import akshare as ak
 
-            # Run in thread pool since AKShare is synchronous
             df = await asyncio.to_thread(ak.fund_info_index_em)
 
             funds = []
@@ -81,12 +84,12 @@ class FundScraper:
                     logger.warning(f"Failed to parse index fund row: {e}")
                     continue
 
-            return ScrapeResult(success=True, data=funds, total_count=len(funds))
+            return ScraperResult(success=True, data=funds, source="AKShare-Index")
         except Exception as e:
             logger.error(f"Failed to scrape index funds: {e}")
-            return ScrapeResult(success=False, error_message=str(e))
+            return ScraperResult(success=False, source="AKShare-Index", error_message=str(e))
 
-    async def _scrape_etf_funds(self) -> ScrapeResult:
+    async def _scrape_etf_funds(self) -> ScraperResult[Fund]:
         """Scrape ETF funds from AKShare."""
         try:
             import akshare as ak
@@ -108,12 +111,12 @@ class FundScraper:
                     logger.warning(f"Failed to parse ETF row: {e}")
                     continue
 
-            return ScrapeResult(success=True, data=funds, total_count=len(funds))
+            return ScraperResult(success=True, data=funds, source="AKShare-ETF")
         except Exception as e:
             logger.error(f"Failed to scrape ETF funds: {e}")
-            return ScrapeResult(success=False, error_message=str(e))
+            return ScraperResult(success=False, source="AKShare-ETF", error_message=str(e))
 
-    async def _scrape_off_exchange_funds(self) -> ScrapeResult:
+    async def _scrape_off_exchange_funds(self) -> ScraperResult[Fund]:
         """Scrape off-exchange funds from AKShare."""
         try:
             import akshare as ak
@@ -135,10 +138,10 @@ class FundScraper:
                     logger.warning(f"Failed to parse fund row: {e}")
                     continue
 
-            return ScrapeResult(success=True, data=funds, total_count=len(funds))
+            return ScraperResult(success=True, data=funds, source="AKShare-OffExchange")
         except Exception as e:
             logger.error(f"Failed to scrape off-exchange funds: {e}")
-            return ScrapeResult(success=False, error_message=str(e))
+            return ScraperResult(success=False, source="AKShare-OffExchange", error_message=str(e))
 
     async def scrape_fund_detail(self, code: str) -> dict[str, Any] | None:
         """Scrape fund detail from AKShare."""

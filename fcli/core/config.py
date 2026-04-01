@@ -1,4 +1,4 @@
-"""FCLI 配置模块
+﻿"""FCLI 配置模块
 
 配置来源: .env 文件 + 环境变量
 所有默认值硬编码在 Field(default=...) 中。
@@ -129,9 +129,18 @@ class DisplaySettings(BaseSettings):
             "BOND": "债券",
         }
     )
-    type_map: dict = Field(default={"STOCK": "股票", "FUND": "基金", "INDEX": "指数", "FOREX": "外汇", "BOND": "债券"})
+    type_map: dict = Field(
+        default={"STOCK": "股票", "FUND": "基金", "INDEX": "指数", "FOREX": "外汇", "BOND": "债券", "GOLD": "黄金"}
+    )
     type_color: dict = Field(
-        default={"STOCK": "yellow", "FUND": "magenta", "INDEX": "blue", "FOREX": "cyan", "BOND": "white"}
+        default={
+            "STOCK": "yellow",
+            "FUND": "magenta",
+            "INDEX": "blue",
+            "FOREX": "cyan",
+            "BOND": "white",
+            "GOLD": "gold3",
+        }
     )
 
     model_config = SettingsConfigDict(env_file=PROJECT_ENV_PATH, env_file_encoding="utf-8", extra="ignore")
@@ -473,7 +482,10 @@ class SymbolRegistry:
         """
         from .models.base import AssetType
 
-        # 基金代码特征: 6位数字且以特定前缀开头
+        gold_codes = {"GC", "XAU", "GOLD"}
+        if code.upper().strip() in gold_codes:
+            return AssetType.GOLD
+
         if code.isdigit() and len(code) == 6:
             prefix2 = code[:2]
             prefix3 = code[:3]

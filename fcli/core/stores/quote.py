@@ -1,4 +1,4 @@
-"""Quote store - flat table implementation."""
+﻿"""Quote store - flat table implementation."""
 
 from datetime import datetime, timezone
 
@@ -173,6 +173,3 @@ class QuoteStore:
             volume=str(row["volume"]) if row["volume"] else None,
         )
 
-
-# Backward compatibility alias
-QuoteFactStore = QuoteStore

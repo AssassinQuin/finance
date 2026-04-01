@@ -1,4 +1,4 @@
-"""Exchange rate store - flat table implementation."""
+﻿"""Exchange rate store - flat table implementation."""
 
 from datetime import datetime, timezone
 
@@ -134,6 +134,3 @@ class ExchangeRateStore:
             update_time=row.get("rate_time"),
         )
 
-
-# Backward compatibility alias
-ExchangeRateFactStore = ExchangeRateStore
