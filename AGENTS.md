@@ -1,4 +1,4 @@
-# AI Agent Development Guide
+﻿# AI Agent Development Guide
 
 ## Project Overview
 
@@ -26,6 +26,7 @@ Simple flat tables — no JOINs, no dimension tables, no star schema.
 ### SQL Queries
 
 All queries are simple single-table SELECTs:
+
 ```sql
 -- Get latest gold reserves
 SELECT * FROM gold_reserves
@@ -60,6 +61,7 @@ python run.py --help
 
 # Subcommand help
 python run.py watchlist -h
+python run.py market -h
 python run.py gold -h
 python run.py gpr -h
 python run.py fx -h
@@ -124,6 +126,22 @@ python run.py fx USD CNY         # USD/CNY rate
 python run.py fx EUR             # EUR rates
 ```
 
+### Market Commands
+
+```bash
+# Fund search
+python run.py market search 沪深 300
+python run.py market search 510300 -t ETF
+python run.py market search 黄金 -n 5
+
+# Fund detail
+python run.py market detail 510300
+
+# Update fund data
+python run.py market update
+python run.py market update -t ETF -f
+```
+
 ### Watchlist Service
 
 The `WatchlistService` supports batch operations:
@@ -134,7 +152,7 @@ from fcli.services.watchlist_service import watchlist_service
 # Add multiple assets
 count = await watchlist_service.add_assets(["600519", "000858", "AAPL"])
 
-# Remove multiple assets  
+# Remove multiple assets
 count = await watchlist_service.remove_assets(["600519", "000858"])
 
 # List all assets
@@ -144,14 +162,15 @@ assets = await watchlist_service.list_assets()
 ## Database Operations
 
 ```python
-# CORRECT: Use class methods, init before use
+# CORRECT: Use Database.session() context manager
 async def command_handler():
-    try:
-        await Database.init(config)
+    async with Database.session(config):
         # Use Store classes or Database class methods
         data = await Database.fetch_all("SELECT * FROM gold_reserves")
-    finally:
-        await Database.close()
+
+# CORRECT: Auto-lazy-init (no explicit init needed)
+async def simple_query():
+    rows = await Database.fetch_all("SELECT * FROM gold_reserves")
 
 # INCORRECT: Creating Database instances
 db = Database()  # Never do this
@@ -160,12 +179,14 @@ db = Database()  # Never do this
 ### Store Classes
 
 All Store classes follow the same pattern:
+
 - Use `Database.fetch_all()`, `Database.fetch_one()`, `Database.execute()`, `Database.execute_many()`
 - No instance state (class methods only)
 - Check `Database.is_enabled()` before database operations
 - Single-table queries (no JOINs)
 
 **Available Stores:**
+
 - `GoldReserveStore` - Flat table `gold_reserves`
 - `GPRHistoryStore` - Flat table `gpr_history`
 - `QuoteStore` - Flat table `quotes`
@@ -174,9 +195,25 @@ All Store classes follow the same pattern:
 - `FundStore` - Flat tables `funds` + `fund_scales`
 - `WatchlistAssetStore` - Flat table `watchlist_assets`
 
-**Backward compatibility aliases (deprecated):**
-- `QuoteFactStore` = `QuoteStore`
-- `ExchangeRateFactStore` = `ExchangeRateStore`
+## DI Container
+
+The `Container` class (`fcli/core/container.py`) manages all service dependencies:
+
+```python
+from fcli.core.container import container
+
+# Access services (lazy-initialized singletons)
+service = container.quote_service
+service = container.gold_reserve_service
+
+# In command handlers, use with Database.session()
+async with Database.session(config):
+    result = await container.quote_service.get_quotes(codes)
+```
+
+- All services are lazy-initialized on first access
+- Services can be replaced for testing
+- Module-level singleton: `container = Container()`
 
 ## Migration Notes
 
@@ -193,15 +230,17 @@ All Store classes follow the same pattern:
 ### V1 → V2 → V3 History
 
 - V1: Simple tables (gold_reserves, gpr_history)
-- V2: Star schema (dim_* + fact_*) — over-engineered for a CLI tool
+- V2: Star schema (dim*\* + fact*\*) — over-engineered for a CLI tool
 - V3: Flat tables — simple, no JOINs, same PG benefits
 
 ## Testing
 
 All commands tested and working:
+
 ```bash
 python run.py -h              # Show help
 python run.py watchlist -h    # Watchlist help
+python run.py market -h       # Market help
 python run.py gold -h         # Gold help
 python run.py gpr -h          # GPR help
 python run.py fx -h           # FX help
@@ -214,38 +253,68 @@ fcli/
 ├── main.py              # CLI entry (Typer)
 ├── commands/            # CLI command handlers
 │   ├── watchlist.py     # Watchlist commands (add/rm/ls/clear)
+│   ├── market.py        # Market commands (search/detail/update)
 │   ├── gold.py          # Gold commands (reserves/supply)
 │   ├── gpr.py           # GPR commands (index/history)
 │   └── fx.py            # FX commands (rate)
 ├── core/
-│   ├── models/          # Pydantic models
-│   ├── stores/          # Data access layer (flat tables)
-│   │   ├── gold.py            # GoldReserveStore
-│   │   ├── gpr.py             # GPRHistoryStore
-│   │   ├── quote.py           # QuoteStore
-│   │   ├── exchange_rate.py   # ExchangeRateStore
-│   │   ├── gold_supply_demand.py # GoldSupplyDemandStore
-│   │   ├── fund.py            # FundStore
-│   │   └── watchlist.py       # WatchlistAssetStore
-│   ├── cache.py         # Hybrid cache
-│   ├── database.py      # Database singleton
-│   └── config.py        # Configuration
+│   ├── cache.py         # Hybrid cache (PG UNLOGGED + File)
+│   ├── cache_strategy.py # AssetType-based cache strategy
+│   ├── config.py        # Settings + config singleton
+│   ├── container.py     # DI container (lazy singletons)
+│   ├── database.py      # PostgreSQL pool (auto-lazy-init)
+│   ├── exceptions.py    # Custom exceptions
+│   ├── factories.py     # Factory functions
+│   ├── storage.py       # HybridStorage (JSON local)
+│   ├── interfaces/      # Interface definitions (Protocol + ABC)
+│   │   ├── cache.py     # CacheABC
+│   │   ├── database.py  # DatabaseABC
+│   │   ├── http.py      # HttpClientABC
+│   │   ├── source.py    # QuoteSourceABC
+│   │   └── storage.py   # StorageABC
+│   ├── models/          # Pydantic v2 models
+│   │   ├── asset.py     # Asset, AssetType, Market
+│   │   ├── base.py      # ScraperResult
+│   │   ├── fund.py      # Fund, FundDetail, FundType
+│   │   ├── gold.py      # GoldReserve
+│   │   ├── gold_supply_demand.py
+│   │   ├── gpr.py       # GprRecord
+│   │   └── log.py       # LogEntry
+│   └── stores/          # Data access layer (flat tables)
+│       ├── gold.py            # GoldReserveStore
+│       ├── gpr.py             # GPRHistoryStore
+│       ├── quote.py           # QuoteStore
+│       ├── exchange_rate.py   # ExchangeRateStore
+│       ├── gold_supply_demand.py # GoldSupplyDemandStore
+│       ├── fund.py            # FundStore
+│       └── watchlist.py       # WatchlistAssetStore
 ├── services/
-│   ├── quote_service.py
+│   ├── quote_service.py       # Quote service
 │   ├── gold_reserve_service.py
 │   ├── gold_supply_demand_service.py
-│   ├── forex_service.py
-│   ├── gpr_service.py
-│   ├── watchlist_service.py  # Watchlist service (batch ops)
+│   ├── forex_service.py       # Forex service
+│   ├── gpr_service.py         # GPR service
+│   ├── fund_service.py        # Fund service
+│   ├── watchlist_service.py   # Watchlist service (batch ops)
 │   └── scrapers/        # Data scrapers
+│       ├── base.py            # BaseScraper[T], ScraperResult[T]
+│       ├── akshare_scraper.py # A-stock (Akshare)
+│       ├── fund_scraper.py    # Fund data (Akshare)
+│       ├── fund_quote_source.py # Fund quote source
+│       ├── sina_quote_source.py # Sina quote source
+│       ├── gpr_scraper.py     # GPR data
+│       ├── imf_scraper.py     # IMF data
+│       ├── wgc_scraper.py     # WGC gold reserves
+│       └── safe_scraper.py    # Safe scraper wrapper
 ├── infra/
-│   └── http_client.py   # HTTP client wrapper
+│   └── http_client.py   # HTTP client wrapper (aiohttp)
 ├── utils/
-│   ├── presenter.py     # Terminal output
+│   ├── presenter.py     # Terminal output (Rich)
 │   ├── logger.py        # Logging
 │   └── time_util.py     # Time utilities
 └── scripts/
     ├── migrate_v3.py    # V3 migration (V2→V3 flatten)
+    ├── import_wgc_data.py
     └── save_gold_reserves.py
 ```
 

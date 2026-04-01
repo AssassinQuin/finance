@@ -1,7 +1,7 @@
-"""Core module exports."""
+﻿"""Core module exports."""
 
 from . import models, stores
-from .config import settings
+from .config import config
 from .database import Database
 from .exceptions import (
     AllSourcesFailedError,
@@ -17,7 +17,7 @@ from .exceptions import (
 from .factories import AssetFactory
 
 __all__ = [
-    "settings",
+    "config",
     "Database",
     "AssetFactory",
     "stores",

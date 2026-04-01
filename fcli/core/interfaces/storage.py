@@ -33,5 +33,9 @@ class StorageABC(ABC):
     async def get(self, code: str) -> "Asset | None":
         pass
 
+    @abstractmethod
+    async def clear(self) -> int:
+        pass
+
 
 __all__ = ["StorageABC"]

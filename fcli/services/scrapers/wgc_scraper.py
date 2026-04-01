@@ -1,4 +1,4 @@
-"""
+﻿"""
 World Gold Council (WGC) Supply/Demand Data Scraper.
 
 Data source: https://www.gold.org/goldhub/data/demand-and-supply
@@ -25,6 +25,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from ...core.models.gold_supply_demand import GoldSupplyDemand
 from ...infra.http_client import http_client
+from ...utils.time_util import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +319,7 @@ class WGCScraper:
             supply_demand_balance=balance,
             price_avg_usd=values.get("price_avg_usd"),
             data_source="WGC",
-            fetch_time=datetime.now(),
+            fetch_time=utcnow(),
         )
 
     async def fetch_latest(self) -> list[GoldSupplyDemand]:
@@ -349,10 +350,6 @@ class WGCScraper:
         logger.warning("No valid WGC Excel file found in recent quarters")
         return []
 
-    async def fetch_supply_demand(self) -> list[GoldSupplyDemand]:
-        """Alias for fetch_latest for backward compatibility."""
-        return await self.fetch_latest()
-
     def fetch_from_local(self, file_path: str | Path) -> list[GoldSupplyDemand]:
         """
         Parse a local WGC Excel file.
@@ -364,7 +361,3 @@ class WGCScraper:
             List of GoldSupplyDemand records
         """
         return self.parse_excel(file_path)
-
-
-# Singleton instance
-wgc_scraper = WGCScraper()

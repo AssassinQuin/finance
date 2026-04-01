@@ -20,7 +20,7 @@ from ..core.stores.quote import QuoteStore
 from ..infra.http_client import HttpClient
 from ..utils.logger import LogContext
 from ..utils.logger import quote_logger as logger
-from ..utils.time_util import is_trading_hours
+from ..utils.time_util import is_trading_hours, utcnow
 
 
 class QuoteService:
@@ -170,7 +170,7 @@ class QuoteService:
             name=data.get("name", asset.name),
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
         )
@@ -224,7 +224,7 @@ class QuoteService:
             name=name or asset.name,
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
             high=float(parts[4]) if parts[4] else None,
@@ -260,7 +260,7 @@ class QuoteService:
             name=name or asset.name,
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
             high=float(parts[4]) if parts[4] else None,
@@ -296,7 +296,7 @@ class QuoteService:
             name=name or asset.name,
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
             high=float(parts[4]) if parts[4] else None,
@@ -332,7 +332,7 @@ class QuoteService:
             name=name or asset.name,
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
         )
@@ -376,7 +376,7 @@ class QuoteService:
             name=asset.name,
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
             high=float(d.get("f44", 0)) / 100 if d.get("f44") else None,
@@ -543,7 +543,7 @@ class QuoteService:
                     name=item.get("f14", asset.name),
                     price=price,
                     change_percent=change_percent,
-                    update_time=datetime.now(),
+                    update_time=utcnow(),
                     market=asset.market,
                     type=asset.type,
                     high=float(item.get("f17", 0)) if item.get("f17") else None,

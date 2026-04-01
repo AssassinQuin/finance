@@ -3,6 +3,7 @@ from datetime import datetime
 
 from ..database import Database
 from ..models import Asset, AssetType, Market, WatchlistAssetDB
+from ...utils.time_util import utcnow
 
 
 class WatchlistAssetStore:
@@ -40,7 +41,7 @@ class WatchlistAssetStore:
             name=db_asset.name,
             market=db_asset.market,
             type=db_asset.type,
-            added_at=db_asset.added_at or datetime.now(),
+            added_at=db_asset.added_at or utcnow(),
             extra=db_asset.extra,
         )
 
@@ -91,13 +92,11 @@ class WatchlistAssetStore:
             return False
 
         db_asset = cls._asset_to_db(asset)
-        extra_json = json.dumps(db_asset.extra or {}) if isinstance(db_asset.extra, dict) else db_asset.extra or "{}"
 
-        # PostgreSQL UPSERT using ON CONFLICT
         sql = """
         INSERT INTO watchlist_assets
             (code, api_code, name, market, type, extra, is_active, added_at)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (code) DO UPDATE SET
             api_code = EXCLUDED.api_code,
             name = EXCLUDED.name,
@@ -115,9 +114,9 @@ class WatchlistAssetStore:
             db_asset.name,
             db_asset.market,
             db_asset.type,
-            extra_json,
+            db_asset.extra or {},
             db_asset.is_active,
-            db_asset.added_at or datetime.now(),
+            db_asset.added_at or utcnow(),
         )
         return True
 
@@ -149,6 +148,24 @@ class WatchlistAssetStore:
 
     @classmethod
     async def get_assets(cls) -> list[Asset]:
-        """Get all active assets as Asset models (for compatibility)."""
+        """Get all active assets as Asset models."""
         db_assets = await cls.get_all_active()
         return [cls._db_to_asset(db_asset) for db_asset in db_assets]
+
+    @classmethod
+    async def clear_all(cls) -> int:
+        """Deactivate all watchlist assets. Returns count deactivated."""
+        if not Database.is_enabled():
+            return 0
+
+        sql = """
+        UPDATE watchlist_assets
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE is_active = TRUE
+        """
+
+        result = await Database.execute(sql)
+        try:
+            return int(result.split()[-1])
+        except (ValueError, IndexError):
+            return 0

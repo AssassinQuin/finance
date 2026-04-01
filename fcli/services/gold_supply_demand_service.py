@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from ..core.database import Database
+from ..utils.time_util import utcnow
 from ..core.models.gold_supply_demand import GoldSupplyDemand
 from ..core.stores.gold_supply_demand import GoldSupplyDemandStore
 from .scrapers.wgc_scraper import WGCScraper
@@ -26,7 +27,7 @@ class GoldSupplyDemandService:
             if db_data:
                 return self._supply_demand_to_dict(db_data)
 
-        data = await self._wgc_scraper.fetch_supply_demand()
+        data = await self._wgc_scraper.fetch_latest()
         if not data:
             return None
 
@@ -56,7 +57,7 @@ class GoldSupplyDemandService:
             supply_demand_balance=data.supply.total_supply - data.demand.total_demand,
             price_avg_usd=data.price_avg,
             data_source="WGC",
-            fetch_time=datetime.now(),
+            fetch_time=utcnow(),
         )
         await GoldSupplyDemandStore.save_quarterly(db_model)
 
@@ -129,6 +130,3 @@ class GoldSupplyDemandService:
         if data:
             return self._supply_demand_to_dict(data)
         return None
-
-
-gold_supply_demand_service = GoldSupplyDemandService()

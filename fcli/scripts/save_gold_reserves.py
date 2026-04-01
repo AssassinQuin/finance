@@ -20,6 +20,7 @@ from fcli.core.models import GoldReserve
 from fcli.core.stores import GoldReserveStore
 from fcli.infra.http_client import run_async
 from fcli.services.scrapers.imf_scraper import IMFScraper
+from fcli.utils.time_util import utcnow
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ async def save_latest_reserves(scraper: IMFScraper, country_codes: list[str] | N
         return 0
 
     reserves = []
-    fetch_time = datetime.now()
+    fetch_time = utcnow()
 
     for item in results:
         period = item.get("period", "")
@@ -136,7 +137,7 @@ async def save_history_reserves(scraper: IMFScraper, country_codes: list[str] | 
         return 0
 
     all_reserves = []
-    fetch_time = datetime.now()
+    fetch_time = utcnow()
 
     for country_data in results:
         country_code = country_data.get("country_code")

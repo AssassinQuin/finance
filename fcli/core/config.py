@@ -388,6 +388,7 @@ class DataSourceConfig(BaseSettings):
 
 
 class Settings(BaseSettings):
+    log_level: str = Field(default="INFO", description="Logging level: DEBUG/INFO/WARNING/ERROR")
     data_dir: Path = Field(default=PACKAGE_ROOT / "data")
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
@@ -508,17 +509,12 @@ class SymbolRegistry:
 # 创建配置实例
 config = Settings()
 
-# 别名
-settings = config
-
-# 全局符号注册表实例
 symbol_registry = SymbolRegistry(config.datasource)
 
 
 # 导出公共接口
 __all__ = [
     "config",
-    "settings",
     "Settings",
     "PACKAGE_ROOT",
     "PROJECT_ENV_PATH",

@@ -12,6 +12,7 @@ from dateutil.relativedelta import relativedelta
 
 from ..core.config import Settings, config
 from ..core.database import Database
+from ..utils.time_util import utcnow
 from ..core.models.gold import GoldReserve
 from ..core.stores.gold import GoldReserveStore
 from .scrapers.imf_scraper import IMFScraper
@@ -127,7 +128,7 @@ class GoldReserveService:
                 return 0
 
             reserves: list[GoldReserve] = []
-            fetch_time = datetime.now()
+            fetch_time = utcnow()
 
             for country_data in history:
                 code = country_data.get("country_code", "")
@@ -301,6 +302,3 @@ class GoldReserveService:
                 }
             )
         return formatted
-
-
-gold_reserve_service = GoldReserveService()

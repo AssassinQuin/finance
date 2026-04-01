@@ -1,4 +1,5 @@
 ﻿from datetime import datetime
+from typing import Annotated
 
 import typer
 
@@ -13,7 +14,7 @@ app = typer.Typer(help="黄金数据", context_settings={"help_option_names": ["
 
 @app.callback(invoke_without_command=True)
 def reserves(
-    update: bool = typer.Option(False, "-u", "--update", help="强制更新数据"),
+    update: Annotated[bool, typer.Option("-u", "--update", help="强制更新数据")] = False,
 ):
     """全球黄金储备报告 (默认命令)
 
@@ -23,7 +24,11 @@ def reserves(
         fcli gold              # 查询黄金储备
         fcli gold -u           # 强制更新数据
     """
-    run_async(_reserves(update))
+    try:
+        run_async(_reserves(update))
+    except Exception as e:
+        ConsolePresenter.print_error(f"获取黄金储备失败: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _reserves(update: bool) -> None:
@@ -55,7 +60,11 @@ def supply():
     示例:
         fcli gold supply
     """
-    run_async(_supply())
+    try:
+        run_async(_supply())
+    except Exception as e:
+        ConsolePresenter.print_error(f"获取供需数据失败: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _supply():

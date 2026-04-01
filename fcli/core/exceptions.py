@@ -1,4 +1,4 @@
-from enum import Enum
+﻿from enum import Enum
 from typing import Any
 
 
@@ -17,7 +17,6 @@ class ErrorCode(str, Enum):
     ALL_SOURCES_FAILED = "E1002"
     QUOTE_PARSE_ERROR = "E1003"
     NETWORK_ERROR = "E1004"
-    TIMEOUT_ERROR = "E1005"
     RATE_LIMIT_ERROR = "E1006"
     DATA_VALIDATION_ERROR = "E1007"
 
@@ -93,14 +92,6 @@ class NetworkError(SourceError):
 
     def __init__(self, message: str, url: str | None = None):
         self.url = url
-        super().__init__(message)
-
-
-class TimeoutError(SourceError):
-    """请求超时错误"""
-
-    def __init__(self, message: str, timeout_seconds: float | None = None):
-        self.timeout_seconds = timeout_seconds
         super().__init__(message)
 
 

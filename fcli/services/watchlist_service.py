@@ -3,14 +3,14 @@
 from ..core.factories import AssetFactory
 from ..core.interfaces.storage import StorageABC
 from ..core.models import Asset
-from ..core.storage import storage
+from ..core.storage import storage as default_storage
 
 
 class WatchlistService:
     """Service for managing watchlist assets with DB and JSON fallback."""
 
     def __init__(self, storage: StorageABC | None = None):
-        self._storage = storage or storage
+        self._storage = storage or default_storage
 
     async def list_assets(self) -> list[Asset]:
         """List all active assets in watchlist."""
@@ -43,5 +43,6 @@ class WatchlistService:
                 removed += 1
         return removed
 
-
-watchlist_service = WatchlistService()
+    async def clear_all(self) -> int:
+        """Clear all assets from watchlist. Returns count cleared."""
+        return await self._storage.clear()

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ...core.models import Fund, FundType, InvestType
@@ -276,7 +276,7 @@ class FundScraper(BaseScraper[Fund]):
         try:
             value_str = str(value).replace("%", "").strip()
             return Decimal(value_str)
-        except Exception:
+        except (ValueError, InvalidOperation):
             return None
 
     def _parse_scale(self, value: Any) -> Decimal | None:
@@ -287,7 +287,7 @@ class FundScraper(BaseScraper[Fund]):
         try:
             value_str = str(value).replace("亿元", "").strip()
             return Decimal(value_str)
-        except Exception:
+        except (ValueError, InvalidOperation):
             return None
 
     def _parse_date(self, value: Any) -> date | None:
@@ -298,5 +298,5 @@ class FundScraper(BaseScraper[Fund]):
         try:
             value_str = str(value).strip()
             return datetime.strptime(value_str, "%Y-%m-%d").date()
-        except Exception:
+        except (ValueError, TypeError):
             return None

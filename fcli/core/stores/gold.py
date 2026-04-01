@@ -1,9 +1,10 @@
-"""Gold reserves store - PostgreSQL flat table implementation."""
+﻿"""Gold reserves store - PostgreSQL flat table implementation."""
 
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from typing import Any
 
+from ...utils.time_util import utcnow
 from ..database import Database
 from ..models.gold import GoldReserve
 
@@ -31,7 +32,7 @@ class GoldReserveStore:
                 data.amount_tonnes,
                 data.report_date or date.today(),
                 data.data_source or "IMF",
-                datetime.now(),
+                utcnow(),
             )
             return True
         except Exception:
@@ -54,7 +55,7 @@ class GoldReserveStore:
                     d.amount_tonnes,
                     d.report_date or date.today(),
                     d.data_source or "IMF",
-                    datetime.now(),
+                    utcnow(),
                 )
                 for d in data_list
             ]

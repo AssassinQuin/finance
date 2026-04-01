@@ -5,23 +5,23 @@ from typing import Any
 
 
 class CacheABC(ABC):
-    """Abstract base class for cache implementations."""
+    """Abstract base class for cache implementations.
 
-    @abstractmethod
+    Subclasses must implement async methods. Sync methods are optional;
+    they raise NotImplementedError by default for pure-async backends (e.g. PostgresCache).
+    """
+
     def get(self, key: str) -> Any | None:
-        pass
+        raise NotImplementedError(f"{type(self).__name__} does not support sync get, use async_get instead")
 
-    @abstractmethod
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
-        pass
+        raise NotImplementedError(f"{type(self).__name__} does not support sync set, use async_set instead")
 
-    @abstractmethod
     def delete(self, key: str) -> None:
-        pass
+        raise NotImplementedError(f"{type(self).__name__} does not support sync delete, use async_delete instead")
 
-    @abstractmethod
     def clear(self) -> None:
-        pass
+        raise NotImplementedError(f"{type(self).__name__} does not support sync clear, use async_clear instead")
 
     @abstractmethod
     async def async_get(self, key: str) -> Any | None:

@@ -1,4 +1,4 @@
-"""Cache implementations - PostgreSQL UNLOGGED + File fallback."""
+﻿"""Cache implementations - PostgreSQL UNLOGGED + File fallback."""
 
 import asyncio
 import json
@@ -104,18 +104,6 @@ class PostgresCache(CacheABC):
                 )
             except Exception as e:
                 logger.debug(f"Cache cleanup failed: {e}")
-
-    def get(self, key: str) -> Any | None:
-        return None
-
-    def set(self, key: str, data: Any, ttl: int):
-        pass
-
-    def delete(self, key: str):
-        pass
-
-    def clear(self):
-        pass
 
     async def async_get(self, key: str) -> Any | None:
         if not Database.is_enabled():

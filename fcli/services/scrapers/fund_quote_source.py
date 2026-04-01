@@ -1,4 +1,4 @@
-"""基金行情数据源 (fundgz.1234567.com.cn)"""
+﻿"""基金行情数据源 (fundgz.1234567.com.cn)"""
 
 import json
 import re
@@ -10,6 +10,7 @@ from ...core.interfaces.source import QuoteSourceABC
 from ...core.models import Asset, Market, Quote
 from ...infra.http_client import HttpClient
 from ...utils.logger import quote_logger as logger
+from ...utils.time_util import utcnow
 
 
 class FundQuoteSource(QuoteSourceABC):
@@ -79,7 +80,7 @@ class FundQuoteSource(QuoteSourceABC):
             name=data.get("name", asset.name),
             price=price,
             change_percent=change_percent,
-            update_time=datetime.now(),
+            update_time=utcnow(),
             market=asset.market,
             type=asset.type,
         )

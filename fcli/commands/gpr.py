@@ -1,4 +1,6 @@
-﻿import typer
+﻿from typing import Annotated
+
+import typer
 
 from ..core.config import config
 from ..core.container import container
@@ -11,8 +13,8 @@ app = typer.Typer(help="地缘政治风险指数", context_settings={"help_optio
 
 @app.callback(invoke_without_command=True)
 def index(
-    update: bool = typer.Option(False, "-u", "--update", help="强制更新数据"),
-    chart: bool = typer.Option(True, "--chart/--no-chart", help="显示图表"),
+    update: Annotated[bool, typer.Option("-u", "--update", help="强制更新数据")] = False,
+    chart: Annotated[bool, typer.Option("--chart/--no-chart", help="显示图表")] = True,
 ):
     """地缘政治风险指数 (默认命令)
 
@@ -23,7 +25,11 @@ def index(
         fcli gpr -u           # 强制更新数据
         fcli gpr --no-chart   # 不显示图表
     """
-    run_async(_index(update, chart))
+    try:
+        run_async(_index(update, chart))
+    except Exception as e:
+        ConsolePresenter.print_error(f"获取 GPR 数据失败: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _index(update: bool, chart: bool) -> None:
@@ -53,7 +59,7 @@ async def _index(update: bool, chart: bool) -> None:
 
 @app.command()
 def history(
-    months: int = typer.Option(120, "-m", "--months", help="显示月数"),
+    months: Annotated[int, typer.Option("-m", "--months", help="显示月数")] = 120,
 ):
     """GPR 历史趋势
 
@@ -61,7 +67,11 @@ def history(
         fcli gpr history
         fcli gpr history -m 60
     """
-    run_async(_history(months))
+    try:
+        run_async(_history(months))
+    except Exception as e:
+        ConsolePresenter.print_error(f"获取历史数据失败: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _history(months: int) -> None:

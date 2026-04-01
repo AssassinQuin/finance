@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
+from ...utils.time_util import utcnow
+
 T = TypeVar("T")
 
 
@@ -67,7 +69,7 @@ class BaseScraper(ABC, Generic[T]):
                 )
 
             records = self.parse(raw_data)
-            self._last_fetch_time = datetime.now()
+            self._last_fetch_time = utcnow()
 
             return ScraperResult(
                 success=True,

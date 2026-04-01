@@ -1,4 +1,4 @@
-"""
+﻿"""
 AkShare 数据源爬虫 - 中国黄金储备历史数据
 完全在线查询，不依赖本地缓存
 """
@@ -8,6 +8,7 @@ from datetime import date, datetime
 from typing import Any
 
 from ...core.models import GoldReserve
+from ...utils.time_util import utcnow
 from .base import BaseScraper
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ class AkShareScraper(BaseScraper):
             return []
 
         reserves = []
-        fetch_time = datetime.now()
+        fetch_time = utcnow()
 
         for item in raw_data.get("data", []):
             try:

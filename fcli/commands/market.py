@@ -5,11 +5,10 @@ from typing import Annotated
 import typer
 
 from ..core.config import config
+from ..core.container import container
 from ..core.database import Database
 from ..core.models import Fund, FundDetail, FundType
-from ..core.stores import FundStore
 from ..infra.http_client import run_async
-from ..core.container import container
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="基金市场", context_settings={"help_option_names": ["-h", "--help"]})
@@ -22,7 +21,13 @@ def main(ctx: typer.Context):
     示例:
         fcli market
     """
-    pass
+    if ctx.invoked_subcommand is not None:
+        return
+    ConsolePresenter.print_info("使用以下子命令操作基金市场:")
+    ConsolePresenter.print_info("  fcli market search <关键词>  搜索基金")
+    ConsolePresenter.print_info("  fcli market detail <代码>    查看基金详情")
+    ConsolePresenter.print_info("  fcli market update           更新基金数据")
+    ConsolePresenter.print_info("使用 -h 查看详细帮助")
 
 
 @app.command()
@@ -103,25 +108,15 @@ def update(
 
 
 async def _search_funds(query: str, fund_type: FundType | None, limit: int) -> list[Fund]:
-    """Search funds from database."""
     async with Database.session(config):
-        funds = await FundStore.search(query, fund_type, limit)
-        return funds
+        return await container.fund_service.search(query, fund_type, limit)
 
 
 async def _get_fund_detail(code: str) -> FundDetail | None:
-    """Get fund detail from database or scrape."""
     async with Database.session(config):
-        fund = await FundStore.get_by_code(code)
-        if not fund:
-            return None
-
-        scale_history = await FundStore.get_scale_history(code)
-        return FundDetail.from_fund(fund, scale_history)
+        return await container.fund_service.get_detail(code)
 
 
 async def _update_fund_data(type: str | None, force: bool) -> int:
-    """Update fund data from scraper."""
     async with Database.session(config):
-        count = await container.fund_service.update_fund_data(type, force=force)
-        return count
+        return await container.fund_service.update_fund_data(type, force=force)

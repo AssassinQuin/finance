@@ -1,4 +1,6 @@
-﻿import typer
+﻿from typing import Annotated
+
+import typer
 
 from ..core.config import config
 from ..core.container import container
@@ -11,8 +13,8 @@ app = typer.Typer(help="汇率查询", context_settings={"help_option_names": ["
 
 @app.callback(invoke_without_command=True)
 def rate(
-    base: str = typer.Argument("USD", help="基准货币"),
-    quote: str | None = typer.Argument(None, help="目标货币"),
+    base: Annotated[str, typer.Argument(help="基准货币")] = "USD",
+    quote: Annotated[str | None, typer.Argument(help="目标货币")] = None,
 ):
     """汇率查询 (默认命令)
 
@@ -21,7 +23,11 @@ def rate(
         fcli fx USD CNY      # 查询 USD/CNY 汇率
         fcli fx EUR          # 查询 EUR 汇率
     """
-    run_async(_rate(base, quote))
+    try:
+        run_async(_rate(base, quote))
+    except Exception as e:
+        ConsolePresenter.print_error(f"获取汇率失败: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _rate(base: str, quote: str | None) -> None:

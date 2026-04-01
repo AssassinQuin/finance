@@ -1,4 +1,4 @@
-"""
+﻿"""
 国家外汇管理局 (SAFE) 官方黄金储备爬虫
 数据来源: https://www.safe.gov.cn
 权威数据，比 AkShare 更准确
@@ -13,6 +13,7 @@ from io import BytesIO
 from typing import Any
 
 from ...core.models import GoldReserve
+from ...utils.time_util import utcnow
 from ...infra.http_client import http_client
 from .base import BaseScraper
 
@@ -345,7 +346,7 @@ class SAFEScraper(BaseScraper):
             return []
 
         reserves = []
-        fetch_time = datetime.now()
+        fetch_time = utcnow()
 
         for item in raw_data.get("data", []):
             try:

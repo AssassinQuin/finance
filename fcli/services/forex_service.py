@@ -11,6 +11,35 @@ from ..core.config import Settings, config
 from ..core.models import ExchangeRate
 from ..core.stores.exchange_rate import ExchangeRateStore
 from ..infra.http_client import HttpClient, http_client
+from ..utils.time_util import utcnow
+
+COMMON_CURRENCIES = {
+    "USD": "美元",
+    "CNY": "人民币",
+    "EUR": "欧元",
+    "GBP": "英镑",
+    "JPY": "日元",
+    "KRW": "韩元",
+    "HKD": "港币",
+    "TWD": "新台币",
+    "SGD": "新加坡元",
+    "AUD": "澳元",
+    "CAD": "加元",
+    "CHF": "瑞士法郎",
+    "THB": "泰铢",
+    "MYR": "马来西亚林吉特",
+    "INR": "印度卢比",
+    "RUB": "俄罗斯卢布",
+}
+
+
+def get_currency_name(code: str) -> str:
+    return COMMON_CURRENCIES.get(code.upper(), code)
+
+
+def format_currency_display(code: str) -> str:
+    name = COMMON_CURRENCIES.get(code.upper())
+    return f"{code}（{name}）" if name else code
 
 
 class ForexService:
@@ -18,32 +47,13 @@ class ForexService:
 
     def __init__(
         self,
-        cache: HybridCache | None = None,
-        config: Settings | None = None,
-        http_client: HttpClient | None = None,
+        cache_backend: HybridCache | None = None,
+        settings: Settings | None = None,
+        client: HttpClient | None = None,
     ):
-        self._cache = cache or cache
-        self._config = config or config
-        self._http_client = http_client or http_client
-
-    COMMON_CURRENCIES = {
-        "USD": "美元",
-        "CNY": "人民币",
-        "EUR": "欧元",
-        "GBP": "英镑",
-        "JPY": "日元",
-        "KRW": "韩元",
-        "HKD": "港币",
-        "TWD": "新台币",
-        "SGD": "新加坡元",
-        "AUD": "澳元",
-        "CAD": "加元",
-        "CHF": "瑞士法郎",
-        "THB": "泰铢",
-        "MYR": "马来西亚林吉特",
-        "INR": "印度卢比",
-        "RUB": "俄罗斯卢布",
-    }
+        self._cache = cache_backend or cache
+        self._config = settings or config
+        self._http_client = client or http_client
 
     async def get_rate(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """获取两个货币之间的汇率"""
@@ -103,7 +113,7 @@ class ForexService:
         if rate is None:
             return None
 
-        date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
+        date_str = data.get("date", utcnow().strftime("%Y-%m-%d"))
         update_time = datetime.strptime(date_str, "%Y-%m-%d")
 
         return ExchangeRate(
@@ -132,7 +142,7 @@ class ForexService:
             quote_currency=quote_currency,
             rate=float(rate),
             source="ExchangeRate-API",
-            update_time=datetime.now(),
+            update_time=utcnow(),
         )
 
     async def get_all_rates(self, base_currency: str = "USD") -> dict[str, ExchangeRate]:
@@ -141,14 +151,14 @@ class ForexService:
         rates = {}
 
         cache_key = f"forex:all:{base_currency}"
-        cached = self._cache.get(cache_key)
+        cached = await self._cache.async_get(cache_key)
         if cached:
             for code, data in cached.items():
                 rates[code] = ExchangeRate(**data)
             return rates
 
         tasks = []
-        for currency in self.COMMON_CURRENCIES:
+        for currency in COMMON_CURRENCIES:
             if currency != base_currency:
                 tasks.append(self.get_rate(base_currency, currency))
 
@@ -168,18 +178,6 @@ class ForexService:
             }
             for code, rate in rates.items()
         }
-        self._cache.set(cache_key, cache_data, self._config.cache.forex_ttl)
+        await self._cache.async_set(cache_key, cache_data, self._config.cache.forex_ttl)
 
         return rates
-
-    def get_currency_name(self, code: str) -> str:
-        """获取货币中文名称"""
-        return self.COMMON_CURRENCIES.get(code.upper(), code)
-
-    def format_currency_display(self, code: str) -> str:
-        """格式化货币显示：代码（中文名）或仅代码"""
-        name = self.COMMON_CURRENCIES.get(code.upper())
-        return f"{code}（{name}）" if name else code
-
-
-forex_service = ForexService()

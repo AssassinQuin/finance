@@ -23,7 +23,7 @@ import logging
 from fcli.core.models.gold_supply_demand import GoldSupplyDemand
 from fcli.core.stores.gold_supply_demand import GoldSupplyDemandStore
 from fcli.infra.http_client import run_async
-from fcli.services.scrapers.wgc_scraper import QuarterlySupplyDemand, wgc_scraper
+from fcli.services.scrapers.wgc_scraper import QuarterlySupplyDemand, WGCScraper
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,8 +69,7 @@ def print_summary(data: list[QuarterlySupplyDemand]) -> None:
         balance = qsd.supply_demand_balance
         price_str = f"${qsd.price_avg_usd:,.0f}" if qsd.price_avg_usd else "N/A"
         print(
-            f"{qsd.period:<12} {qsd.total_supply:>12,.1f} "
-            f"{qsd.total_demand:>12,.1f} {balance:>10,.1f} {price_str:>12}"
+            f"{qsd.period:<12} {qsd.total_supply:>12,.1f} {qsd.total_demand:>12,.1f} {balance:>10,.1f} {price_str:>12}"
         )
 
     if len(data) > 20:
@@ -92,8 +91,8 @@ async def import_from_file(file_path: str, force: bool = False) -> int:
     """
     logger.info(f"Importing from file: {file_path}")
 
-    # Parse Excel file
-    data = wgc_scraper.fetch_from_local(file_path)
+    scraper = WGCScraper()
+    data = scraper.fetch_from_local(file_path)
     if not data:
         logger.error("No data found in file")
         return 0
@@ -133,7 +132,8 @@ async def import_from_download(force: bool = False) -> int:
     """
     logger.info("Downloading latest WGC data...")
 
-    data = await wgc_scraper.fetch_latest()
+    scraper = WGCScraper()
+    data = await scraper.fetch_latest()
     if not data:
         logger.error("Could not download any data")
         return 0
@@ -170,16 +170,16 @@ async def main_async(args: argparse.Namespace) -> int:
 
 def main() -> None:
     """CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="Import WGC gold supply/demand data to database"
-    )
+    parser = argparse.ArgumentParser(description="Import WGC gold supply/demand data to database")
     parser.add_argument(
-        "--file", "-f",
+        "--file",
+        "-f",
         type=str,
         help="Path to WGC Excel file (e.g., GDT_Tables_Q425_CN.xlsx)",
     )
     parser.add_argument(
-        "--download", "-d",
+        "--download",
+        "-d",
         action="store_true",
         help="Download latest data from WGC",
     )

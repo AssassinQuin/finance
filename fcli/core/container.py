@@ -106,9 +106,11 @@ class Container:
     def gold_reserve_service(self) -> GoldReserveService:
         if self._gold_reserve_service is None:
             from ..services.gold_reserve_service import GoldReserveService
+            from ..services.scrapers.imf_scraper import IMFScraper
 
             self._gold_reserve_service = GoldReserveService(
                 config=self._config,
+                imf_scraper=IMFScraper(),
             )
         return self._gold_reserve_service
 
@@ -116,8 +118,11 @@ class Container:
     def gold_supply_demand_service(self) -> GoldSupplyDemandService:
         if self._gold_supply_demand_service is None:
             from ..services.gold_supply_demand_service import GoldSupplyDemandService
+            from ..services.scrapers.wgc_scraper import WGCScraper
 
-            self._gold_supply_demand_service = GoldSupplyDemandService()
+            self._gold_supply_demand_service = GoldSupplyDemandService(
+                wgc_scraper=WGCScraper(),
+            )
         return self._gold_supply_demand_service
 
     @property
@@ -136,9 +141,11 @@ class Container:
     def gpr_service(self) -> GPRService:
         if self._gpr_service is None:
             from ..services.gpr_service import GPRService
+            from ..services.scrapers.gpr_scraper import GPRScraper
 
             self._gpr_service = GPRService(
                 config=self._config,
+                gpr_scraper=GPRScraper(),
             )
         return self._gpr_service
 
@@ -146,8 +153,11 @@ class Container:
     def fund_service(self) -> FundService:
         if self._fund_service is None:
             from ..services.fund_service import FundService
+            from ..services.scrapers.fund_scraper import FundScraper
 
-            self._fund_service = FundService()
+            self._fund_service = FundService(
+                fund_scraper=FundScraper(),
+            )
         return self._fund_service
 
     @property

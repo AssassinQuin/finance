@@ -1,4 +1,4 @@
-"""
+﻿"""
 IMF SDMX 3.0 API Gold Reserves Scraper.
 
 Uses IMF IRFCL (International Reserves and Foreign Currency Liquidity) dataset.
@@ -24,6 +24,7 @@ import aiohttp
 from fcli.core.config import config
 from fcli.core.models.gold import GoldReserve
 from fcli.infra.http_client import http_client
+from fcli.utils.time_util import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -312,14 +313,14 @@ class IMFScraper:
             parsed = self._parse_response(data, country_code)
 
             country_name = self.country_codes.get(country_code, country_code)
-            fetch_time = datetime.now()
+            fetch_time = utcnow()
 
             reserves = []
             for period, tonnes in parsed:
                 try:
                     report_date = datetime.strptime(period, "%Y-%m").date()
                 except ValueError:
-                    report_date = datetime.now().date()
+                    report_date = utcnow().date()
 
                 reserves.append(
                     GoldReserve(
@@ -340,7 +341,7 @@ class IMFScraper:
 
     async def get_latest_gold_reserve(self, country_code: str) -> GoldReserve | None:
         """Get the most recent gold reserve for a country."""
-        end_date = datetime.now()
+        end_date = utcnow()
         start_date = end_date - timedelta(days=365)
 
         start_period = start_date.strftime("%Y-%m")
@@ -351,11 +352,11 @@ class IMFScraper:
         if not reserves:
             return None
 
-        return max(reserves, key=lambda r: r.report_date or datetime.now().date())
+        return max(reserves, key=lambda r: r.report_date or utcnow().date())
 
     async def get_gold_reserves_history(self, country_code: str, years: int = 10) -> list[GoldReserve]:
         """Get historical gold reserves for a country."""
-        end_date = datetime.now()
+        end_date = utcnow()
         start_date = end_date - timedelta(days=years * 365)
 
         start_period = start_date.strftime("%Y-%m")
@@ -434,7 +435,7 @@ class IMFScraper:
         return valid_results
 
     async def get_gold_reserves_history_dict(self, country_code: str, years: int = 10) -> dict:
-        """Get historical reserves as dict (backward compatible)."""
+        """Get historical reserves as dict."""
         reserves = await self.get_gold_reserves_history(country_code, years)
         if not reserves:
             return {
@@ -449,7 +450,7 @@ class IMFScraper:
         }
 
     async def batch_get_latest_reserves_dict(self, country_codes: list[str] | None = None) -> list[dict]:
-        """Get latest reserves as list of dicts (backward compatible)."""
+        """Get latest reserves as list of dicts."""
         reserves = await self.batch_get_latest_reserves(country_codes)
         return [
             {
@@ -462,7 +463,7 @@ class IMFScraper:
         ]
 
     async def batch_get_history_dict(self, country_codes: list[str] | None = None, years: int = 10) -> list[dict]:
-        """Get historical reserves as list of dicts (backward compatible)."""
+        """Get historical reserves as list of dicts."""
         if country_codes is None:
             country_codes = list(self.country_codes.keys())
 
@@ -480,22 +481,3 @@ class IMFScraper:
                 valid_results.append(result)
 
         return valid_results
-
-
-imf_scraper = IMFScraper()
-
-
-async def get_latest_gold(country_code: str) -> GoldReserve | None:
-    return await imf_scraper.get_latest_gold_reserve(country_code)
-
-
-async def get_all_latest_gold() -> list[GoldReserve]:
-    return await imf_scraper.batch_get_latest_reserves()
-
-
-async def get_gold_history(country_code: str, years: int = 10) -> list[GoldReserve]:
-    return await imf_scraper.get_gold_reserves_history(country_code, years)
-
-
-async def get_all_gold_history(years: int = 10) -> list[list[GoldReserve]]:
-    return await imf_scraper.batch_get_history(years=years)

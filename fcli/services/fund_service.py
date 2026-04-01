@@ -2,10 +2,11 @@
 
 import logging
 from datetime import datetime, timezone
+
 from dateutil.relativedelta import relativedelta
 
 from ..core.database import Database
-from ..core.models import Fund, FundType
+from ..core.models import Fund, FundDetail, FundType
 from ..core.stores import FundStore
 from .scrapers.fund_scraper import FundScraper
 
@@ -83,5 +84,12 @@ class FundService:
 
         return saved_count
 
+    async def search(self, query: str, fund_type: FundType | None = None, limit: int = 20) -> list[Fund]:
+        return await FundStore.search(query, fund_type, limit)
 
-fund_service = FundService()
+    async def get_detail(self, code: str) -> FundDetail | None:
+        fund = await FundStore.get_by_code(code)
+        if not fund:
+            return None
+        scale_history = await FundStore.get_scale_history(code)
+        return FundDetail.from_fund(fund, scale_history)

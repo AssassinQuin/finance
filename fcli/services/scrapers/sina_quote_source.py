@@ -1,4 +1,4 @@
-"""新浪行情数据源"""
+﻿"""新浪行情数据源"""
 
 from datetime import datetime
 
@@ -7,6 +7,7 @@ from ...core.interfaces.source import QuoteSourceABC
 from ...core.models import Asset, Market, Quote
 from ...infra.http_client import HttpClient
 from ...utils.logger import quote_logger as logger
+from ...utils.time_util import utcnow
 
 
 class SinaQuoteSource(QuoteSourceABC):
@@ -108,7 +109,7 @@ class SinaQuoteSource(QuoteSourceABC):
                 change_percent=self._calc_change_percent(
                     float(parts[3]) if parts[3] else 0, float(parts[2]) if parts[2] else 0
                 ),
-                update_time=datetime.now(),
+                update_time=utcnow(),
                 market=asset.market,
                 type=asset.type,
                 high=float(parts[4]) if parts[4] else None,
@@ -126,7 +127,7 @@ class SinaQuoteSource(QuoteSourceABC):
                 change_percent=self._calc_change_percent(
                     float(parts[6]) if parts[6] else 0, float(parts[3]) if parts[3] else 0
                 ),
-                update_time=datetime.now(),
+                update_time=utcnow(),
                 market=asset.market,
                 type=asset.type,
                 high=float(parts[4]) if parts[4] else None,
@@ -144,7 +145,7 @@ class SinaQuoteSource(QuoteSourceABC):
                 change_percent=self._calc_change_percent(
                     float(parts[1]) if parts[1] else 0, float(parts[26]) if parts[26] else 0
                 ),
-                update_time=datetime.now(),
+                update_time=utcnow(),
                 market=asset.market,
                 type=asset.type,
                 high=float(parts[4]) if parts[4] else None,

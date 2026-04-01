@@ -1,4 +1,4 @@
-"""Storage implementations - PostgreSQL + File fallback."""
+﻿"""Storage implementations - PostgreSQL + File fallback."""
 
 import json
 import os
@@ -79,6 +79,13 @@ class FileStorage(StorageABC):
                 return asset
         return None
 
+    async def clear(self) -> int:
+        assets = await self.load()
+        count = len(assets)
+        if count > 0:
+            await self.save([])
+        return count
+
 
 class PostgresStorage(StorageABC):
     """PostgreSQL-based storage using WatchlistAssetStore."""
@@ -112,6 +119,9 @@ class PostgresStorage(StorageABC):
                 name=result.name,
             )
         return None
+
+    async def clear(self) -> int:
+        return await self._store.clear_all()
 
 
 class HybridStorage(StorageABC):
@@ -183,6 +193,12 @@ class HybridStorage(StorageABC):
         if await self._check_postgres_health() and self._postgres_storage:
             return await self._postgres_storage.get(code)
         return await self._file_storage.get(code)
+
+    async def clear(self) -> int:
+        await self._ensure_initialized()
+        if await self._check_postgres_health() and self._postgres_storage:
+            return await self._postgres_storage.clear()
+        return await self._file_storage.clear()
 
     @property
     def is_postgres_available(self) -> bool:

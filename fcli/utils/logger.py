@@ -67,9 +67,19 @@ class StructuredFormatter(logging.Formatter):
 class StructuredLogger:
     """结构化日志器"""
 
-    def __init__(self, name: str, level: int = logging.INFO):
+    _default_level: int | None = None
+
+    @classmethod
+    def _resolve_level(cls) -> int:
+        if cls._default_level is None:
+            import os
+            level_str = os.environ.get("FCLI_LOG_LEVEL", "INFO").upper()
+            cls._default_level = getattr(logging, level_str, logging.INFO)
+        return cls._default_level
+
+    def __init__(self, name: str, level: int | None = None):
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(level)
+        self.logger.setLevel(level or self._resolve_level())
 
         # 避免重复添加 handler
         if not self.logger.handlers:

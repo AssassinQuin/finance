@@ -8,7 +8,8 @@ from datetime import date
 
 from dateutil.relativedelta import relativedelta
 
-from ..core.config import Settings, settings
+from ..core.config import Settings
+from ..core.config import config as _default_config
 from ..core.database import Database
 from ..core.models import GPRHistory
 from ..core.stores import GPRHistoryStore
@@ -23,8 +24,8 @@ class GPRService:
         config: Settings | None = None,
         gpr_scraper: GPRScraper | None = None,
     ):
-        self._config = config or settings
-        self._gpr_scraper = gpr_scraper
+        self._config = config or _default_config
+        self._gpr_scraper = gpr_scraper or GPRScraper()
         self.storage_file = self._config.data_dir / "gpr_history.json"
         self._ensure_storage()
 
@@ -136,7 +137,7 @@ class GPRService:
         try:
             logger.info("Starting GPR data update...")
 
-            scraper = self._gpr_scraper or GPRScraper()
+            scraper = self._gpr_scraper
             async with scraper:
                 raw_data = await scraper.fetch_gpr_data()
                 logger.info(f"Fetched {len(raw_data)} GPR data points from remote")
@@ -180,6 +181,3 @@ class GPRService:
         except Exception as e:
             logger.error(f"GPR data update failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
-
-
-gpr_service = GPRService()

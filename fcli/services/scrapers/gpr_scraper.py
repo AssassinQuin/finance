@@ -1,4 +1,4 @@
-"""GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
+﻿"""GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
 
 import asyncio
 import logging
@@ -120,13 +120,13 @@ class GPRScraper:
                             try:
                                 dt = pd.to_datetime(date_val)
                                 period = dt.strftime("%Y-%m")
-                            except Exception:
+                            except (ValueError, TypeError):
                                 continue
                     else:
                         try:
                             dt = pd.to_datetime(date_val)
                             period = dt.strftime("%Y-%m")
-                        except Exception:
+                        except (ValueError, TypeError):
                             continue
 
                     if start_year:
@@ -183,21 +183,3 @@ class GPRScraper:
         sorted_items = sorted(data.items(), reverse=True)[:months]
 
         return [{"date": date, "value": value} for date, value in sorted_items]
-
-
-async def fetch_gpr_update() -> dict[str, float]:
-    """Fetch all GPR historical data."""
-    scraper = GPRScraper()
-    try:
-        return await scraper.fetch_gpr_data()
-    finally:
-        await scraper.close()
-
-
-async def get_latest_gpr() -> dict | None:
-    """Get latest GPR value."""
-    scraper = GPRScraper()
-    try:
-        return await scraper.get_latest_gpr()
-    finally:
-        await scraper.close()

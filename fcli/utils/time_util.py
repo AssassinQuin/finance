@@ -1,8 +1,12 @@
 ﻿import re
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from fcli.core.config import config
 from fcli.core.models.base import Market
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def normalize_time(time_str: str) -> str:

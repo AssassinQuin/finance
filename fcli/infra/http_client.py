@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import atexit
 import json
 import logging
@@ -24,6 +24,10 @@ class HttpClient:
         try:
             loop = asyncio.get_event_loop()
             if loop is None or loop.is_closed():
+                return
+            if loop.is_running():
+                if self.session and not self.session.closed:
+                    loop.create_task(self._async_close())
                 return
             if self.session and not self.session.closed:
                 loop.run_until_complete(self._async_close())
@@ -112,15 +116,13 @@ class HttpClient:
 
         for attempt in range(max_retries):
             try:
-                response = await asyncio.wait_for(
-                    session.get(
-                        url,
-                        params=params,
-                        proxy=proxy,
-                        headers=request_headers,
-                        allow_redirects=follow_redirects,
-                    ),
-                    timeout=total_timeout,
+                response = await session.get(
+                    url,
+                    params=params,
+                    proxy=proxy,
+                    headers=request_headers,
+                    allow_redirects=follow_redirects,
+                    timeout=aiohttp.ClientTimeout(total=total_timeout),
                 )
                 response.raise_for_status()
                 if binary_mode:
