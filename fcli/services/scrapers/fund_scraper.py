@@ -1,15 +1,15 @@
 ﻿"""Fund scraper using AKShare."""
 
 import asyncio
-import logging
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ...core.models import Fund, FundType, InvestType
+from ...utils.logger import get_logger
 from .base import BaseScraper, ScraperResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.scraper.fund")
 
 
 class FundScraper(BaseScraper[Fund]):

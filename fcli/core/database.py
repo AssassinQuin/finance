@@ -11,7 +11,6 @@ Usage:
 
 import asyncio
 import atexit
-import logging
 from contextlib import asynccontextmanager
 from typing import AsyncContextManager
 
@@ -19,6 +18,7 @@ import asyncpg
 
 from .config import config
 from .exceptions import DatabaseError
+from ..utils.logger import get_logger
 
 
 class _TransactionContext:
@@ -40,7 +40,7 @@ class _TransactionContext:
             await self._conn.close()
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.database")
 
 
 class Database:

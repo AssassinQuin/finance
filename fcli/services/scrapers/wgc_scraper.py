@@ -14,7 +14,6 @@ Excel Structure (GDT_Tables_Q425_CN.xlsx):
 
 from __future__ import annotations
 
-import logging
 import re
 from datetime import datetime
 from io import BytesIO
@@ -25,9 +24,10 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from ...core.models.gold_supply_demand import GoldSupplyDemand
 from ...infra.http_client import http_client
+from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.scraper.wgc")
 
 
 # Excel Row Mapping (Row number -> Field name)

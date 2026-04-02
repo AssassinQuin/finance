@@ -2,10 +2,8 @@
 
 import typer
 
-from ..core.config import config
 from ..core.container import container
-from ..core.database import Database
-from ..infra.http_client import run_async
+from ..utils.command import run_command
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="汇率查询", context_settings={"help_option_names": ["-h", "--help"]})
@@ -23,15 +21,11 @@ def rate(
         fcli fx USD CNY      # 查询 USD/CNY 汇率
         fcli fx EUR          # 查询 EUR 汇率
     """
-    try:
-        run_async(_rate(base, quote))
-    except Exception as e:
-        ConsolePresenter.print_error(f"获取汇率失败: {e}")
-        raise typer.Exit(1) from e
+    run_command(_rate(base, quote), "获取汇率失败")
 
 
 async def _rate(base: str, quote: str | None) -> None:
-    async with Database.session(config):
+    async with container.session():
         if quote:
             with ConsolePresenter.status(f"查询 {base}/{quote} 汇率..."):
                 rate = await container.forex_service.get_rate(base, quote)

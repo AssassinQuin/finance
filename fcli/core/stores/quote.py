@@ -3,15 +3,17 @@
 from datetime import datetime, timezone
 
 from ...core.database import Database
+from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 from ..models.asset import Quote
-from ..models.base import Market
+from ..models.base import AssetType, Market
 
 
 class QuoteStore:
     """Store for quote data using flat quotes table."""
 
     table_name = "quotes"
+    _logger = get_logger("fcli.stores.quote")
 
     _UPSERT_SQL = """
         INSERT INTO quotes (
@@ -26,9 +28,8 @@ class QuoteStore:
             volume = EXCLUDED.volume
     """
 
-    @classmethod
-    def _quote_to_args(cls, quote: Quote, now: datetime, source: str = "Akshare") -> tuple:
-        asset_type = "fund" if quote.type and hasattr(quote.type, "value") and quote.type.value == "fund" else "stock"
+    def _quote_to_args(self, quote: Quote, now: datetime, source: str = "Akshare") -> tuple:
+        asset_type = "fund" if quote.type == AssetType.FUND else "stock"
         return (
             quote.code,
             quote.name,
@@ -37,39 +38,38 @@ class QuoteStore:
             quote.change_percent,
             quote.high,
             quote.low,
-            int(quote.volume) if quote.volume and quote.volume.isdigit() else None,
+            int(quote.volume) if quote.volume else None,
             quote.update_time or now,
             source,
             now,
         )
 
-    @classmethod
-    async def save(cls, quote: Quote, source: str = "Akshare") -> bool:
+    async def save(self, quote: Quote, source: str = "Akshare") -> bool:
         if not Database.is_enabled():
             return False
 
         try:
             now = datetime.now(timezone.utc)
-            await Database.execute(cls._UPSERT_SQL, *cls._quote_to_args(quote, now, source))
+            await Database.execute(self._UPSERT_SQL, *self._quote_to_args(quote, now, source))
             return True
-        except Exception:
+        except Exception as e:
+            self._logger.error(f"Failed to save quote {quote.code}: {e}")
             return False
 
-    @classmethod
-    async def save_many(cls, quotes: list[Quote], source: str = "Akshare") -> int:
+    async def save_many(self, quotes: list[Quote], source: str = "Akshare") -> int:
         if not Database.is_enabled() or not quotes:
             return 0
 
         try:
             now = datetime.now(timezone.utc)
-            args_list = [cls._quote_to_args(q, now, source) for q in quotes]
-            await Database.execute_many(cls._UPSERT_SQL, args_list)
+            args_list = [self._quote_to_args(q, now, source) for q in quotes]
+            await Database.execute_many(self._UPSERT_SQL, args_list)
             return len(args_list)
-        except Exception:
+        except Exception as e:
+            self._logger.error(f"Failed to save {len(quotes)} quotes: {e}")
             return 0
 
-    @classmethod
-    async def get_by_code(cls, code: str, limit: int = 10) -> list[Quote]:
+    async def get_by_code(self, code: str, limit: int = 10) -> list[Quote]:
         """Get historical quotes for a code."""
         if not Database.is_enabled():
             return []
@@ -87,10 +87,9 @@ class QuoteStore:
             limit,
         )
 
-        return [cls._row_to_model(row) for row in rows]
+        return [self._row_to_model(row) for row in rows]
 
-    @classmethod
-    async def get_latest(cls, code: str) -> Quote | None:
+    async def get_latest(self, code: str) -> Quote | None:
         """Get latest quote for a code."""
         if not Database.is_enabled():
             return None
@@ -110,10 +109,9 @@ class QuoteStore:
         if not row:
             return None
 
-        return cls._row_to_model(row)
+        return self._row_to_model(row)
 
-    @classmethod
-    async def delete_old(cls, days: int = 30) -> int:
+    async def delete_old(self, days: int = 30) -> int:
         if not Database.is_enabled():
             return 0
 
@@ -126,8 +124,7 @@ class QuoteStore:
         )
         return result or 0
 
-    @classmethod
-    def _row_to_model(cls, row) -> Quote:
+    def _row_to_model(self, row) -> Quote:
         return Quote(
             code=row["code"],
             name=row["name"] or "",
@@ -139,3 +136,6 @@ class QuoteStore:
             low=float(row["low_price"]) if row["low_price"] else None,
             volume=str(row["volume"]) if row["volume"] else None,
         )
+
+
+quote_store = QuoteStore()

@@ -6,18 +6,18 @@
 数据获取方式: 从年度页面获取 Excel 文件下载链接，解析 Excel 获取月度数据
 """
 
-import logging
 import re
 from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
 from ...core.models import GoldReserve
+from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 from ...infra.http_client import http_client
 from .base import BaseScraper
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.scraper.safe")
 
 
 class SAFEScraper(BaseScraper):

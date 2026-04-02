@@ -39,7 +39,6 @@ class BaseScraper(ABC, Generic[T]):
 
     def __init__(self):
         self._last_fetch_time: datetime | None = None
-        self._cache: dict[str, Any] = {}
 
     @property
     @abstractmethod

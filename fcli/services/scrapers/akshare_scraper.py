@@ -3,15 +3,15 @@ AkShare 数据源爬虫 - 中国黄金储备历史数据
 完全在线查询，不依赖本地缓存
 """
 
-import logging
 from datetime import date, datetime
 from typing import Any
 
 from ...core.models import GoldReserve
+from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 from .base import BaseScraper
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.scraper.akshare")
 
 
 class AkShareScraper(BaseScraper):

@@ -14,7 +14,6 @@ Unit Conversion:
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 import socket
 from datetime import datetime, timedelta
@@ -24,9 +23,10 @@ import aiohttp
 from fcli.core.config import config
 from fcli.core.models.gold import GoldReserve
 from fcli.infra.http_client import http_client
+from fcli.utils.logger import get_logger
 from fcli.utils.time_util import utcnow
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.scraper.imf")
 
 # Errors that indicate non-transient network issues (DNS, connection refused, etc.)
 # Retrying these is pointless — they won't resolve within seconds.

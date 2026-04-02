@@ -21,7 +21,7 @@ import argparse
 import logging
 
 from fcli.core.models.gold_supply_demand import GoldSupplyDemand
-from fcli.core.stores.gold_supply_demand import GoldSupplyDemandStore
+from fcli.core.stores.gold_supply_demand import gold_supply_demand_store
 from fcli.infra.http_client import run_async
 from fcli.services.scrapers.wgc_scraper import QuarterlySupplyDemand, WGCScraper
 
@@ -105,13 +105,13 @@ async def import_from_file(file_path: str, force: bool = False) -> int:
     for qsd in data:
         # Check if exists
         if not force:
-            existing = await GoldSupplyDemandStore.get_by_quarter(qsd.year, qsd.quarter)
+            existing = await gold_supply_demand_store.get_by_quarter(qsd.year, qsd.quarter)
             if existing:
                 logger.debug(f"Data exists for {qsd.year} Q{qsd.quarter}, skipping")
                 continue
 
         model = convert_to_model(qsd)
-        success = await GoldSupplyDemandStore.save_quarterly(model)
+        success = await gold_supply_demand_store.save_quarterly(model)
         if success:
             saved += 1
             logger.info(f"Imported {qsd.year} Q{qsd.quarter}")
@@ -144,12 +144,12 @@ async def import_from_download(force: bool = False) -> int:
     saved = 0
     for qsd in data:
         if not force:
-            existing = await GoldSupplyDemandStore.get_by_quarter(qsd.year, qsd.quarter)
+            existing = await gold_supply_demand_store.get_by_quarter(qsd.year, qsd.quarter)
             if existing:
                 continue
 
         model = convert_to_model(qsd)
-        success = await GoldSupplyDemandStore.save_quarterly(model)
+        success = await gold_supply_demand_store.save_quarterly(model)
         if success:
             saved += 1
 

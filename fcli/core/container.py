@@ -5,6 +5,7 @@ Centralized management of all service dependencies for decoupling and testabilit
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from ..infra.http_client import HttpClient, http_client
@@ -81,10 +82,15 @@ class Container:
     def quote_service(self) -> QuoteService:
         if self._quote_service is None:
             from ..services.quote_service import QuoteService
+            from ..services.scrapers.eastmoney_quote_source import EastmoneyQuoteSource
             from ..services.scrapers.fund_quote_source import FundQuoteSource
             from ..services.scrapers.sina_quote_source import SinaQuoteSource
 
             sina_source = SinaQuoteSource(
+                http_client=self.http_client,
+                config=self._config,
+            )
+            eastmoney_source = EastmoneyQuoteSource(
                 http_client=self.http_client,
                 config=self._config,
             )
@@ -97,7 +103,7 @@ class Container:
                 config=self._config,
                 http_client=self.http_client,
                 cache_strategy=self.cache_strategy,
-                sources=[sina_source],
+                sources=[sina_source, eastmoney_source],
                 fund_source=fund_source,
             )
         return self._quote_service
@@ -109,7 +115,6 @@ class Container:
             from ..services.scrapers.imf_scraper import IMFScraper
 
             self._gold_reserve_service = GoldReserveService(
-                config=self._config,
                 imf_scraper=IMFScraper(),
             )
         return self._gold_reserve_service
@@ -129,11 +134,18 @@ class Container:
     def forex_service(self) -> ForexService:
         if self._forex_service is None:
             from ..services.forex_service import ForexService
+            from ..services.scrapers.exchangerate_source import ExchangeRateSource
+            from ..services.scrapers.frankfurter_source import FrankfurterSource
 
+            sources = [
+                FrankfurterSource(http_client=self.http_client, config=self._config),
+                ExchangeRateSource(http_client=self.http_client, config=self._config),
+            ]
             self._forex_service = ForexService(
-                cache=self.cache,
-                config=self._config,
-                http_client=self.http_client,
+                sources=sources,
+                cache_backend=self.cache,
+                settings=self._config,
+                client=self.http_client,
             )
         return self._forex_service
 
@@ -144,7 +156,7 @@ class Container:
             from ..services.scrapers.gpr_scraper import GPRScraper
 
             self._gpr_service = GPRService(
-                config=self._config,
+                settings=self._config,
                 gpr_scraper=GPRScraper(),
             )
         return self._gpr_service
@@ -169,6 +181,13 @@ class Container:
                 storage=self.storage,
             )
         return self._watchlist_service
+
+    @asynccontextmanager
+    async def session(self):
+        from .database import Database
+
+        async with Database.session(self._config):
+            yield
 
     async def cleanup(self):
         if self._http_client is not None:

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Save gold reserves history to database using IMF SDMX 3.0 API.
 
 Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)
@@ -17,7 +17,7 @@ from datetime import date, datetime
 from fcli.core.config import config
 from fcli.core.database import Database
 from fcli.core.models import GoldReserve
-from fcli.core.stores import GoldReserveStore
+from fcli.core.stores.gold import gold_reserve_store
 from fcli.infra.http_client import run_async
 from fcli.services.scrapers.imf_scraper import IMFScraper
 from fcli.utils.time_util import utcnow
@@ -110,7 +110,7 @@ async def save_latest_reserves(scraper: IMFScraper, country_codes: list[str] | N
         )
         reserves.append(reserve)
 
-    saved = await GoldReserveStore.save_batch(reserves)
+    saved = await gold_reserve_store.save_batch(reserves)
     logger.info(f"Saved {saved} latest reserve records")
 
     return saved
@@ -201,7 +201,7 @@ async def save_history_reserves(scraper: IMFScraper, country_codes: list[str] | 
 
     for i in range(0, len(all_reserves), batch_size):
         batch = all_reserves[i : i + batch_size]
-        saved = await GoldReserveStore.save_batch(batch)
+        saved = await gold_reserve_store.save_batch(batch)
         total_saved += saved
         logger.info(f"Saved batch {i // batch_size + 1}: {saved} records")
 
@@ -221,17 +221,15 @@ async def verify_data():
 
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
-            SELECT c.country_code, c.country_name,
+            SELECT country_code, country_name,
                    COUNT(*) as records,
-                   MIN(f.report_date) as min_date,
-                   MAX(f.report_date) as max_date,
-                   (SELECT f2.gold_tonnes FROM fact_gold_reserve f2
-                    JOIN dim_country c2 ON f2.country_id = c2.id
-                    WHERE c2.country_code = c.country_code
-                    ORDER BY f2.report_date DESC LIMIT 1) as latest_amount
-            FROM fact_gold_reserve f
-            JOIN dim_country c ON f.country_id = c.id
-            GROUP BY c.country_code, c.country_name
+                   MIN(report_date) as min_date,
+                   MAX(report_date) as max_date,
+                   (SELECT gr2.gold_tonnes FROM gold_reserves gr2
+                    WHERE gr2.country_code = gr.country_code
+                    ORDER BY gr2.report_date DESC LIMIT 1) as latest_amount
+            FROM gold_reserves gr
+            GROUP BY country_code, country_name
             ORDER BY latest_amount DESC
             LIMIT 30
         """)

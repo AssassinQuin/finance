@@ -1,16 +1,97 @@
 ﻿"""GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
 
 import asyncio
-import logging
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
+from typing import Literal
 
 import aiohttp
 import pandas as pd
 
 from fcli.core.config import config
+from fcli.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.scraper.gpr")
+
+GLOBAL_INDEX_COLUMNS = {
+    "GPR": "GPR",
+    "GPRT": "GPRT",
+    "GPRA": "GPRA",
+    "GPRH": "GPRH",
+}
+
+GLOBAL_SUB_INDEX_COLUMNS = {
+    "GPRHT": "GPRHT",
+    "GPRHA": "GPRHA",
+    "SHARE_GPR": "SHARE_GPR",
+}
+
+COUNTRY_CODE_MAP: dict[str, str] = {
+    "GPRC_ARG": "ARG",
+    "GPRC_AUS": "AUS",
+    "GPRC_BEL": "BEL",
+    "GPRC_BRA": "BRA",
+    "GPRC_CAN": "CAN",
+    "GPRC_CHE": "CHE",
+    "GPRC_CHL": "CHL",
+    "GPRC_CHN": "CHN",
+    "GPRC_COL": "COL",
+    "GPRC_DEU": "DEU",
+    "GPRC_DNK": "DNK",
+    "GPRC_EGY": "EGY",
+    "GPRC_ESP": "ESP",
+    "GPRC_FIN": "FIN",
+    "GPRC_FRA": "FRA",
+    "GPRC_GBR": "GBR",
+    "GPRC_HKG": "HKG",
+    "GPRC_HUN": "HUN",
+    "GPRC_IDN": "IDN",
+    "GPRC_IND": "IND",
+    "GPRC_ISR": "ISR",
+    "GPRC_ITA": "ITA",
+    "GPRC_JPN": "JPN",
+    "GPRC_KOR": "KOR",
+    "GPRC_MEX": "MEX",
+    "GPRC_MYS": "MYS",
+    "GPRC_NLD": "NLD",
+    "GPRC_NOR": "NOR",
+    "GPRC_PER": "PER",
+    "GPRC_PHL": "PHL",
+    "GPRC_POL": "POL",
+    "GPRC_PRT": "PRT",
+    "GPRC_RUS": "RUS",
+    "GPRC_SAU": "SAU",
+    "GPRC_SWE": "SWE",
+    "GPRC_THA": "THA",
+    "GPRC_TUN": "TUN",
+    "GPRC_TUR": "TUR",
+    "GPRC_TWN": "TWN",
+    "GPRC_UKR": "UKR",
+    "GPRC_USA": "USA",
+    "GPRC_VEN": "VEN",
+    "GPRC_VNM": "VNM",
+    "GPRC_ZAF": "ZAF",
+}
+
+
+def _parse_period(date_val) -> str | None:
+    if pd.isna(date_val):
+        return None
+    if isinstance(date_val, datetime):
+        return date_val.strftime("%Y-%m")
+    if isinstance(date_val, str):
+        if len(date_val) == 7 and "-" in date_val:
+            return date_val
+        if len(date_val) == 6:
+            return f"{date_val[:4]}-{date_val[4:6]}"
+        try:
+            return pd.to_datetime(date_val).strftime("%Y-%m")
+        except (ValueError, TypeError):
+            return None
+    try:
+        return pd.to_datetime(date_val).strftime("%Y-%m")
+    except (ValueError, TypeError):
+        return None
 
 
 class GPRScraper:
@@ -48,16 +129,7 @@ class GPRScraper:
                 await connector.close()
             self._session = None
 
-    async def fetch_gpr_data(self, start_year: int | None = None) -> dict[str, float]:
-        """
-        Fetch GPR historical data from Excel file.
-
-        Args:
-            start_year: Filter data from this year onwards (optional)
-
-        Returns:
-            Dictionary mapping "YYYY-MM" to GPR index value
-        """
+    async def _download_excel(self) -> bytes:
         session = await self._get_session()
         proxy = self._get_proxy()
         timeout = aiohttp.ClientTimeout(total=120, connect=30)
@@ -66,120 +138,116 @@ class GPRScraper:
             if response.status != 200:
                 text = await response.text()
                 raise Exception(f"GPR data fetch failed: {response.status} - {text}")
+            return await response.read()
 
-            excel_data = await response.read()
+    async def fetch_gpr_data(self, start_year: int | None = None) -> dict[str, float]:
+        excel_data = await self._download_excel()
+        return self._parse_global_gpr(excel_data, start_year)
 
-        return self._parse_excel(excel_data, start_year)
-
-    def _parse_excel(self, excel_data: bytes, start_year: int | None = None) -> dict[str, float]:
-        """
-        Parse GPR Excel file.
-
-        Expected format:
-        - Column with dates (year-month)
-        - Column with GPR index values
+    async def fetch_full_data(
+        self,
+        start_year: int | None = None,
+        include_countries: bool = True,
+        include_sub_indexes: bool = True,
+    ) -> list[dict]:
+        """Fetch all GPR data: global indexes + country-specific data.
 
         Returns:
-            {"2026-01": 135.24, "2025-12": 121.45, ...}
+            List of dicts with keys:
+              period, country_code, index_type, value
         """
+        excel_data = await self._download_excel()
+        return self._parse_full_excel(
+            excel_data,
+            start_year=start_year,
+            include_countries=include_countries,
+            include_sub_indexes=include_sub_indexes,
+        )
+
+    def _parse_global_gpr(self, excel_data: bytes, start_year: int | None = None) -> dict[str, float]:
         result = {}
 
-        try:
-            df = pd.read_excel(BytesIO(excel_data), sheet_name=0)
+        df = pd.read_excel(BytesIO(excel_data), sheet_name=0)
+        date_col = "month"
 
-            date_col = None
-            gpr_col = None
+        for idx, row in df.iterrows():
+            period = _parse_period(row.get(date_col))
+            if not period:
+                continue
 
-            for col in df.columns:
-                col_str = str(col).lower()
-                if any(keyword in col_str for keyword in ["date", "month", "year", "time"]):
-                    date_col = col
-                elif any(keyword in col_str for keyword in ["gpr", "index", "risk"]):
-                    gpr_col = col
+            if start_year and int(period[:4]) < start_year:
+                continue
 
-            if date_col is None or gpr_col is None:
-                date_col = df.columns[0]
-                gpr_col = df.columns[1]
+            gpr_val = row.get("GPR")
+            if pd.isna(gpr_val):
+                continue
 
-            for idx, row in df.iterrows():
-                try:
-                    date_val = row[date_col]
-                    gpr_val = row[gpr_col]
+            val = float(gpr_val)
+            if val > 0:
+                result[period] = round(val, 2)
 
-                    if pd.isna(date_val) or pd.isna(gpr_val):
-                        continue
-
-                    if isinstance(date_val, datetime):
-                        period = date_val.strftime("%Y-%m")
-                    elif isinstance(date_val, str):
-                        if len(date_val) == 7 and "-" in date_val:
-                            period = date_val
-                        elif len(date_val) == 6:
-                            period = f"{date_val[:4]}-{date_val[4:6]}"
-                        else:
-                            try:
-                                dt = pd.to_datetime(date_val)
-                                period = dt.strftime("%Y-%m")
-                            except (ValueError, TypeError):
-                                continue
-                    else:
-                        try:
-                            dt = pd.to_datetime(date_val)
-                            period = dt.strftime("%Y-%m")
-                        except (ValueError, TypeError):
-                            continue
-
-                    if start_year:
-                        year = int(period.split("-")[0])
-                        if year < start_year:
-                            continue
-
-                    gpr_float = float(gpr_val)
-
-                    if gpr_float > 0:
-                        result[period] = round(gpr_float, 2)
-
-                except (ValueError, TypeError, AttributeError) as e:
-                    logger.debug(f"Skipping row {idx}: {e}")
-                    continue
-
-        except Exception as e:
-            logger.error(f"Error parsing GPR Excel: {e}")
-            raise
-
-        logger.info(f"Parsed {len(result)} GPR data points")
+        logger.info(f"Parsed {len(result)} global GPR data points")
         return result
 
+    def _parse_full_excel(
+        self,
+        excel_data: bytes,
+        start_year: int | None = None,
+        include_countries: bool = True,
+        include_sub_indexes: bool = True,
+    ) -> list[dict]:
+        records = []
+
+        df = pd.read_excel(BytesIO(excel_data), sheet_name=0)
+        date_col = "month"
+
+        for idx, row in df.iterrows():
+            period = _parse_period(row.get(date_col))
+            if not period:
+                continue
+
+            if start_year and int(period[:4]) < start_year:
+                continue
+
+            for col_name, index_type in GLOBAL_INDEX_COLUMNS.items():
+                val = row.get(col_name)
+                if pd.isna(val):
+                    continue
+                fval = float(val)
+                if fval > 0:
+                    records.append({
+                        "period": period,
+                        "country_code": "WLD",
+                        "index_type": index_type,
+                        "value": round(fval, 4),
+                    })
+
+            if include_countries:
+                for col_name, country_code in COUNTRY_CODE_MAP.items():
+                    val = row.get(col_name)
+                    if pd.isna(val):
+                        continue
+                    fval = float(val)
+                    if fval > 0:
+                        records.append({
+                            "period": period,
+                            "country_code": country_code,
+                            "index_type": "GPR",
+                            "value": round(fval, 4),
+                        })
+
+        logger.info(f"Parsed {len(records)} full GPR data points")
+        return records
+
     async def get_latest_gpr(self) -> dict | None:
-        """
-        Get the latest GPR index value.
-
-        Returns:
-            {"period": "2026-01", "value": 135.24} or None
-        """
         data = await self.fetch_gpr_data(start_year=datetime.now().year - 1)
-
         if not data:
             return None
-
         latest_period = max(data.keys())
         return {"period": latest_period, "value": data[latest_period]}
 
     async def get_gpr_history(self, months: int = 12) -> list[dict]:
-        """
-        Get GPR history for the last N months.
-
-        Args:
-            months: Number of months to retrieve
-
-        Returns:
-            [{"date": "2026-01", "value": 135.24}, ...]
-        """
-        start_date = datetime.now()
-        start_year = start_date.year - 2
-
+        start_year = datetime.now().year - 2
         data = await self.fetch_gpr_data(start_year=start_year)
-
         sorted_items = sorted(data.items(), reverse=True)[:months]
-
-        return [{"date": date, "value": value} for date, value in sorted_items]
+        return [{"date": d, "value": v} for d, v in sorted_items]

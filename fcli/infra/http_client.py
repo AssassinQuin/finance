@@ -1,15 +1,15 @@
 ﻿import asyncio
 import atexit
 import json
-import logging
 from collections.abc import Coroutine
 from typing import Any, TypeVar
 
 import aiohttp
 
 from ..core.config import config
+from ..utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.http")
 
 T = TypeVar("T")
 
@@ -172,11 +172,6 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
         except Exception:
             logger.exception("Error during async task execution")
             raise
-        finally:
-            try:
-                await http_client.close()
-            except Exception:
-                logger.exception("Error during HTTP client cleanup")
 
     return asyncio.run(_runner())
 

@@ -2,10 +2,8 @@
 
 import typer
 
-from ..core.config import config
 from ..core.container import container
-from ..core.database import Database
-from ..infra.http_client import run_async
+from ..utils.command import run_command
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="自选股管理", context_settings={"help_option_names": ["-h", "--help"]})
@@ -20,15 +18,11 @@ def query_quotes(ctx: typer.Context):
     """
     if ctx.invoked_subcommand is not None:
         return
-    try:
-        run_async(_query())
-    except Exception as e:
-        ConsolePresenter.print_error(f"获取行情失败: {e}")
-        raise typer.Exit(1) from e
+    run_command(_query(), "获取行情失败")
 
 
 async def _query():
-    async with Database.session(config):
+    async with container.session():
         with ConsolePresenter.status("获取自选股行情..."):
             assets = await container.watchlist_service.list_assets()
             if not assets:
@@ -50,19 +44,15 @@ def add(
         fcli watchlist add 600519
         fcli watchlist add 600519 000858
     """
-    try:
+    count = run_command(_add(codes), "添加失败")
+    ConsolePresenter.print_success(f"已添加 {count} 个自选")
 
-        async def _add() -> int:
-            async with Database.session(config):
-                with ConsolePresenter.status("添加自选股..."):
-                    count = await container.watchlist_service.add_assets(codes)
-                return count
 
-        count = run_async(_add())
-        ConsolePresenter.print_success(f"已添加 {count} 个自选")
-    except Exception as e:
-        ConsolePresenter.print_error(f"添加失败: {e}")
-        raise typer.Exit(1) from e
+async def _add(codes: list[str]) -> int:
+    async with container.session():
+        with ConsolePresenter.status("添加自选股..."):
+            count = await container.watchlist_service.add_assets(codes)
+        return count
 
 
 @app.command()
@@ -77,19 +67,15 @@ def rm(
         fcli watchlist rm 600519
         fcli watchlist rm 600519 000858
     """
-    try:
+    count = run_command(_rm(codes), "删除失败")
+    ConsolePresenter.print_success(f"已删除 {count} 个自选")
 
-        async def _rm() -> int:
-            async with Database.session(config):
-                with ConsolePresenter.status("删除自选股..."):
-                    count = await container.watchlist_service.remove_assets(codes)
-                return count
 
-        count = run_async(_rm())
-        ConsolePresenter.print_success(f"已删除 {count} 个自选")
-    except Exception as e:
-        ConsolePresenter.print_error(f"删除失败: {e}")
-        raise typer.Exit(1) from e
+async def _rm(codes: list[str]) -> int:
+    async with container.session():
+        with ConsolePresenter.status("删除自选股..."):
+            count = await container.watchlist_service.remove_assets(codes)
+        return count
 
 
 @app.command()
@@ -99,18 +85,14 @@ def ls():
     示例:
         fcli watchlist ls
     """
-    try:
+    run_command(_ls(), "获取列表失败")
 
-        async def _ls():
-            async with Database.session(config):
-                with ConsolePresenter.status("获取自选股列表..."):
-                    assets = await container.watchlist_service.list_assets()
-                ConsolePresenter.print_asset_table(assets)
 
-        run_async(_ls())
-    except Exception as e:
-        ConsolePresenter.print_error(f"获取列表失败: {e}")
-        raise typer.Exit(1) from e
+async def _ls():
+    async with container.session():
+        with ConsolePresenter.status("获取自选股列表..."):
+            assets = await container.watchlist_service.list_assets()
+        ConsolePresenter.print_asset_table(assets)
 
 
 @app.command()
@@ -120,19 +102,15 @@ def clear():
     示例:
         fcli watchlist clear
     """
-    try:
+    count = run_command(_clear(), "清空失败")
+    if count > 0:
+        ConsolePresenter.print_success(f"已清空 {count} 个自选")
+    else:
+        ConsolePresenter.print_warning("自选股列表为空")
 
-        async def _clear() -> int:
-            async with Database.session(config):
-                with ConsolePresenter.status("清空自选股..."):
-                    count = await container.watchlist_service.clear_all()
-                return count
 
-        count = run_async(_clear())
-        if count > 0:
-            ConsolePresenter.print_success(f"已清空 {count} 个自选")
-        else:
-            ConsolePresenter.print_warning("自选股列表为空")
-    except Exception as e:
-        ConsolePresenter.print_error(f"清空失败: {e}")
-        raise typer.Exit(1) from e
+async def _clear() -> int:
+    async with container.session():
+        with ConsolePresenter.status("清空自选股..."):
+            count = await container.watchlist_service.clear_all()
+        return count

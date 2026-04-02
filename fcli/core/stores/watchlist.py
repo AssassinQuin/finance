@@ -7,10 +7,8 @@ from ...utils.time_util import utcnow
 
 
 class WatchlistAssetStore:
-    """Store for watchlist assets."""
 
-    @classmethod
-    def _row_to_model(cls, row: dict) -> WatchlistAssetDB:
+    def _row_to_model(self, row: dict) -> WatchlistAssetDB:
         extra_data = row.get("extra")
         if isinstance(extra_data, str):
             extra_data = json.loads(extra_data)
@@ -32,9 +30,7 @@ class WatchlistAssetStore:
             updated_at=row.get("updated_at"),
         )
 
-    @classmethod
-    def _db_to_asset(cls, db_asset: WatchlistAssetDB) -> Asset:
-        """Convert DB model to Asset model."""
+    def _db_to_asset(self, db_asset: WatchlistAssetDB) -> Asset:
         return Asset(
             code=db_asset.code,
             api_code=db_asset.api_code,
@@ -45,9 +41,7 @@ class WatchlistAssetStore:
             extra=db_asset.extra,
         )
 
-    @classmethod
-    def _asset_to_db(cls, asset: Asset) -> WatchlistAssetDB:
-        """Convert Asset model to DB model."""
+    def _asset_to_db(self, asset: Asset) -> WatchlistAssetDB:
         return WatchlistAssetDB(
             code=asset.code,
             api_code=asset.api_code,
@@ -59,9 +53,7 @@ class WatchlistAssetStore:
             added_at=asset.added_at,
         )
 
-    @classmethod
-    async def get_all_active(cls) -> list[WatchlistAssetDB]:
-        """Get all active watchlist assets."""
+    async def get_all_active(self) -> list[WatchlistAssetDB]:
         if not Database.is_enabled():
             return []
 
@@ -72,26 +64,22 @@ class WatchlistAssetStore:
         """
 
         rows = await Database.fetch_all(sql)
-        return [cls._row_to_model(dict(row)) for row in rows]
+        return [self._row_to_model(dict(row)) for row in rows]
 
-    @classmethod
-    async def get_by_code(cls, code: str) -> WatchlistAssetDB | None:
-        """Get asset by code."""
+    async def get_by_code(self, code: str) -> WatchlistAssetDB | None:
         if not Database.is_enabled():
             return None
 
         sql = "SELECT * FROM watchlist_assets WHERE code = $1"
 
         row = await Database.fetch_one(sql, code)
-        return cls._row_to_model(dict(row)) if row else None
+        return self._row_to_model(dict(row)) if row else None
 
-    @classmethod
-    async def add(cls, asset: Asset) -> bool:
-        """Add or update an asset in watchlist."""
+    async def add(self, asset: Asset) -> bool:
         if not Database.is_enabled():
             return False
 
-        db_asset = cls._asset_to_db(asset)
+        db_asset = self._asset_to_db(asset)
 
         sql = """
         INSERT INTO watchlist_assets
@@ -120,9 +108,7 @@ class WatchlistAssetStore:
         )
         return True
 
-    @classmethod
-    async def remove(cls, code: str) -> bool:
-        """Remove an asset from watchlist (soft delete)."""
+    async def remove(self, code: str) -> bool:
         if not Database.is_enabled():
             return False
 
@@ -135,9 +121,7 @@ class WatchlistAssetStore:
         result = await Database.execute(sql, code)
         return result != "UPDATE 0"
 
-    @classmethod
-    async def hard_delete(cls, code: str) -> bool:
-        """Permanently delete an asset from watchlist."""
+    async def hard_delete(self, code: str) -> bool:
         if not Database.is_enabled():
             return False
 
@@ -146,15 +130,11 @@ class WatchlistAssetStore:
         result = await Database.execute(sql, code)
         return result != "DELETE 0"
 
-    @classmethod
-    async def get_assets(cls) -> list[Asset]:
-        """Get all active assets as Asset models."""
-        db_assets = await cls.get_all_active()
-        return [cls._db_to_asset(db_asset) for db_asset in db_assets]
+    async def get_assets(self) -> list[Asset]:
+        db_assets = await self.get_all_active()
+        return [self._db_to_asset(db_asset) for db_asset in db_assets]
 
-    @classmethod
-    async def clear_all(cls) -> int:
-        """Deactivate all watchlist assets. Returns count deactivated."""
+    async def clear_all(self) -> int:
         if not Database.is_enabled():
             return 0
 
@@ -169,3 +149,6 @@ class WatchlistAssetStore:
             return int(result.split()[-1])
         except (ValueError, IndexError):
             return 0
+
+
+watchlist_asset_store = WatchlistAssetStore()

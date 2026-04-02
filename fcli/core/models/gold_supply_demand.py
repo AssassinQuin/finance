@@ -1,4 +1,4 @@
-"""Gold supply and demand quarterly data model."""
+﻿"""Gold supply and demand quarterly data model."""
 
 from datetime import datetime
 
@@ -34,3 +34,30 @@ class GoldSupplyDemand(BaseModel):
     fetch_time: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    def to_display_dict(self) -> dict:
+        return {
+            "period": self.period,
+            "year": self.year,
+            "quarter": self.quarter,
+            "supply": {
+                "mine_production": self.mine_production,
+                "recycling": self.recycling,
+                "net_hedging": self.net_hedging,
+                "total": self.total_supply,
+            },
+            "demand": {
+                "jewelry": self.jewelry,
+                "technology": self.technology,
+                "investment": {
+                    "total": self.total_investment,
+                    "bars_coins": self.bars_coins,
+                    "etfs": self.etfs,
+                    "otc": self.otc_investment,
+                },
+                "central_banks": self.central_banks,
+                "total": self.total_demand,
+            },
+            "price_avg": self.price_avg_usd,
+            "source": self.data_source or "WGC",
+        }

@@ -4,11 +4,9 @@ from typing import Annotated
 
 import typer
 
-from ..core.config import config
 from ..core.container import container
-from ..core.database import Database
 from ..core.models import Fund, FundDetail, FundType
-from ..infra.http_client import run_async
+from ..utils.command import run_command
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="基金市场", context_settings={"help_option_names": ["-h", "--help"]})
@@ -43,21 +41,17 @@ def search(
         fcli market search 510300 -t ETF
         fcli market search 黄金 -n 5
     """
-    try:
-        fund_type_enum = None
-        if type:
-            fund_type_enum = FundType(type.upper())
+    fund_type_enum = None
+    if type:
+        fund_type_enum = FundType(type.upper())
 
-        funds = run_async(_search_funds(query, fund_type_enum, limit))
+    funds = run_command(_search_funds(query, fund_type_enum, limit), "搜索失败")
 
-        if not funds:
-            ConsolePresenter.print_warning("未找到匹配的基金")
-            return
+    if not funds:
+        ConsolePresenter.print_warning("未找到匹配的基金")
+        return
 
-        ConsolePresenter.print_fund_table(funds)
-    except Exception as e:
-        ConsolePresenter.print_error(f"搜索失败: {e}")
-        raise typer.Exit(1) from e
+    ConsolePresenter.print_fund_table(funds)
 
 
 @app.command()
@@ -69,17 +63,13 @@ def detail(
     示例:
         fcli market detail 510300
     """
-    try:
-        fund_detail = run_async(_get_fund_detail(code))
+    fund_detail = run_command(_get_fund_detail(code), "查询失败")
 
-        if not fund_detail:
-            ConsolePresenter.print_error(f"未找到基金: {code}")
-            return
+    if not fund_detail:
+        ConsolePresenter.print_error(f"未找到基金: {code}")
+        return
 
-        ConsolePresenter.print_fund_detail(fund_detail)
-    except Exception as e:
-        ConsolePresenter.print_error(f"查询失败: {e}")
-        raise typer.Exit(1) from e
+    ConsolePresenter.print_fund_detail(fund_detail)
 
 
 @app.command()
@@ -94,29 +84,25 @@ def update(
         fcli market update -t ETF
         fcli market update -f
     """
-    try:
-        ConsolePresenter.print_info("正在更新基金数据...")
-        count = run_async(_update_fund_data(type, force))
+    ConsolePresenter.print_info("正在更新基金数据...")
+    count = run_command(_update_fund_data(type, force), "更新失败")
 
-        if count > 0:
-            ConsolePresenter.print_success(f"成功更新 {count} 只基金")
-        else:
-            ConsolePresenter.print_warning("未更新任何基金")
-    except Exception as e:
-        ConsolePresenter.print_error(f"更新失败: {e}")
-        raise typer.Exit(1) from e
+    if count > 0:
+        ConsolePresenter.print_success(f"成功更新 {count} 只基金")
+    else:
+        ConsolePresenter.print_warning("未更新任何基金")
 
 
 async def _search_funds(query: str, fund_type: FundType | None, limit: int) -> list[Fund]:
-    async with Database.session(config):
+    async with container.session():
         return await container.fund_service.search(query, fund_type, limit)
 
 
 async def _get_fund_detail(code: str) -> FundDetail | None:
-    async with Database.session(config):
+    async with container.session():
         return await container.fund_service.get_detail(code)
 
 
 async def _update_fund_data(type: str | None, force: bool) -> int:
-    async with Database.session(config):
+    async with container.session():
         return await container.fund_service.update_fund_data(type, force=force)

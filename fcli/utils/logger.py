@@ -105,6 +105,9 @@ class StructuredLogger:
     def debug(self, message: str, context: LogContext | None = None):
         self._log(logging.DEBUG, message, context)
 
+    def exception(self, message: str, context: LogContext | None = None):
+        self._log(logging.ERROR, message, context)
+
     @contextmanager
     def timed(self, operation: str, **context_kwargs):
         """计时上下文管理器"""

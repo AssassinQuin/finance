@@ -1,11 +1,11 @@
-"""Models package - unified data models."""
+﻿"""Models package - unified data models."""
 
 from .asset import Asset, ExchangeRate, Quote
 from .base import AssetType, Market
 from .fund import Fund, FundDetail, FundScale, FundSearchResult, FundType, InvestType
 from .gold import GoldReserve
 from .gold_supply_demand import GoldSupplyDemand
-from .gpr import GPRHistory
+from .gpr import GPR_COUNTRY_NAMES, GPRIndexType, GPRHistory
 from .log import WatchlistAssetDB
 
 __all__ = [
@@ -28,6 +28,8 @@ __all__ = [
     "GoldSupplyDemand",
     # GPR models
     "GPRHistory",
+    "GPRIndexType",
+    "GPR_COUNTRY_NAMES",
     # System models
     "WatchlistAssetDB",
 ]

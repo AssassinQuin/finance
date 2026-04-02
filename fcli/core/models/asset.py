@@ -1,4 +1,4 @@
-"""Asset and Quote models."""
+﻿"""Asset and Quote models."""
 
 from datetime import datetime
 from typing import Any
@@ -35,7 +35,7 @@ class Quote(BaseModel):
     currency: str | None = None
     high: float | None = None
     low: float | None = None
-    volume: str | None = None
+    volume: float | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..models import Asset, Market, Quote
+    from ..models import Asset, ExchangeRate, Market, Quote
 
 
 class DataSourceABC(ABC):
@@ -45,7 +45,25 @@ class QuoteSourceABC(DataSourceABC):
         pass
 
 
+class ForexSourceABC(ABC):
+    """Abstract base class for forex rate sources."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        pass
+
+    @abstractmethod
+    async def is_available(self) -> bool:
+        pass
+
+    @abstractmethod
+    async def fetch_rate(self, base_currency: str, quote_currency: str) -> "ExchangeRate | None":
+        pass
+
+
 __all__ = [
     "DataSourceABC",
+    "ForexSourceABC",
     "QuoteSourceABC",
 ]

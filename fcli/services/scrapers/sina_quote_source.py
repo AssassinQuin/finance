@@ -114,7 +114,7 @@ class SinaQuoteSource(QuoteSourceABC):
                 type=asset.type,
                 high=float(parts[4]) if parts[4] else None,
                 low=float(parts[5]) if parts[5] else None,
-                volume=parts[8] if parts[8] else None,
+                volume=float(parts[8]) if parts[8] else None,
             )
 
         elif market == Market.HK:
@@ -150,7 +150,7 @@ class SinaQuoteSource(QuoteSourceABC):
                 type=asset.type,
                 high=float(parts[4]) if parts[4] else None,
                 low=float(parts[5]) if parts[5] else None,
-                volume=parts[10] if parts[10] else None,
+                volume=float(parts[10]) if parts[10] else None,
             )
 
         return None

@@ -16,7 +16,7 @@ from ..core.config import Settings
 from ..core.interfaces.cache import CacheABC
 from ..core.interfaces.source import QuoteSourceABC
 from ..core.models import Asset, AssetType, Market, Quote
-from ..core.stores.quote import QuoteStore
+from ..core.stores.quote import quote_store
 from ..infra.http_client import HttpClient
 from ..utils.logger import LogContext
 from ..utils.logger import quote_logger as logger
@@ -71,39 +71,58 @@ class QuoteService:
                 )
             return Quote(**cached)
 
-        for source in self._config.datasource.quote_priority:
+        if asset.type == AssetType.FUND and self._fund_source:
             try:
-                if source == "sina":
-                    quote = await self._fetch_sina(asset)
-                elif source == "eastmoney":
-                    quote = await self._fetch_eastmoney(asset)
-                elif source == "yahoo":
-                    quote = await self._fetch_yahoo(asset)
+                quote = await self._fund_source.fetch_single(asset)
+                if quote:
+                    return await self._save_quote(quote, "fund_source")
+            except Exception as e:
+                logger.warning(f"Fund source failed: {e}")
+                if not self._config.datasource.fallback_enabled:
+                    raise
+
+        source_map = {s.name: s for s in self._sources}
+        fallback_map: dict[str, Any] = {
+            "sina": self._fetch_sina,
+            "yahoo": self._fetch_yahoo,
+        }
+
+        for source_name in self._config.datasource.quote_priority:
+            try:
+                quote = None
+                if source_name in source_map:
+                    quote = await source_map[source_name].fetch_single(asset)
+                elif source_name in fallback_map:
+                    quote = await fallback_map[source_name](asset)
                 else:
                     continue
 
                 if quote:
-                    ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
-                    await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
-                    await QuoteStore.save(quote)
-                    logger.info(
-                        "Quote fetched",
-                        LogContext(
-                            operation="fetch_quote",
-                            code=asset.code,
-                            market=asset.market.value,
-                            source=source,
-                            cache_hit=False,
-                        ),
-                    )
-                    return quote
+                    return await self._save_quote(quote, source_name)
             except Exception as e:
-                logger.warning(f"Source {source} failed: {e}")
+                logger.warning(f"Source {source_name} failed: {e}")
                 if not self._config.datasource.fallback_enabled:
                     raise
                 continue
 
         return None
+
+    async def _save_quote(self, quote: Quote, source_name: str) -> Quote:
+        ttl = self._cache_strategy.get_ttl(quote.type, quote.market)
+        cache_key = f"quote:{quote.code}"
+        await self._cache.async_set(cache_key, self._quote_to_dict(quote), ttl)
+        await quote_store.save(quote)
+        logger.info(
+            "Quote fetched",
+            LogContext(
+                operation="fetch_quote",
+                code=quote.code,
+                market=quote.market.value,
+                source=source_name,
+                cache_hit=False,
+            ),
+        )
+        return quote
 
     def _quote_to_dict(self, quote: Quote) -> dict:
         """将 Quote 对象转换为字典用于缓存"""
@@ -229,7 +248,7 @@ class QuoteService:
             type=asset.type,
             high=float(parts[4]) if parts[4] else None,
             low=float(parts[5]) if parts[5] else None,
-            volume=parts[8] if parts[8] else None,
+            volume=float(parts[8]) if parts[8] else None,
         )
 
     async def _fetch_sina_hk(self, asset: Asset) -> Quote | None:
@@ -265,7 +284,7 @@ class QuoteService:
             type=asset.type,
             high=float(parts[4]) if parts[4] else None,
             low=float(parts[5]) if parts[5] else None,
-            volume=parts[12] if parts[12] else None,
+            volume=float(parts[12]) if parts[12] else None,
         )
 
     async def _fetch_sina_us(self, asset: Asset) -> Quote | None:
@@ -337,54 +356,8 @@ class QuoteService:
             type=asset.type,
         )
 
-    async def _fetch_eastmoney(self, asset: Asset) -> Quote | None:
-        secid_map = {
-            Market.CN: f"1.{asset.api_code[2:]}"
-            if asset.api_code.startswith(("sh", "SH"))
-            else f"0.{asset.api_code[2:]}",
-            Market.HK: f"116.{asset.api_code.replace('rt_hk', '')}",
-            Market.US: f"105.{asset.api_code}",
-            Market.GLOBAL: f"106.{asset.api_code.split('.')[1] if '.' in asset.api_code else asset.api_code}",
-        }
-
-        secid = secid_map.get(asset.market)
-        if not secid:
-            return None
-
-        url = self._config.datasource.eastmoney.quote_api_url
-        params = {
-            "secid": secid,
-            "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f162,f163,f166,f169,f170,f171,f184",
-        }
-
-        data = await self._http_client.fetch(url, params=params)
-
-        if not data or not isinstance(data, dict) or data.get("rc") != 0 or not data.get("data"):
-            return None
-
-        d = data["data"]
-
-        price = float(d.get("f43", 0)) / 100
-        prev_close = float(d.get("f60", 0)) / 100
-
-        change_percent = 0.0
-        if prev_close > 0:
-            change_percent = (price - prev_close) / prev_close * 100
-
-        return Quote(
-            code=asset.code,
-            name=asset.name,
-            price=price,
-            change_percent=change_percent,
-            update_time=utcnow(),
-            market=asset.market,
-            type=asset.type,
-            high=float(d.get("f44", 0)) / 100 if d.get("f44") else None,
-            low=float(d.get("f45", 0)) / 100 if d.get("f45") else None,
-            volume=str(int(d.get("f47", 0))) if d.get("f47") and d.get("f47") != "-" else None,
-        )
-
     async def _fetch_yahoo(self, asset: Asset) -> Quote | None:
+        logger.warning(f"Yahoo data source not implemented yet, skipping {asset.code}")
         return None
 
     async def fetch_all(self, assets: list[Asset]) -> list[Quote]:
@@ -548,7 +521,7 @@ class QuoteService:
                     type=asset.type,
                     high=float(item.get("f17", 0)) if item.get("f17") else None,
                     low=float(item.get("f18", 0)) if item.get("f18") else None,
-                    volume=str(int(float(item.get("f47", 0)))) if item.get("f47") and item.get("f47") != "-" else None,
+                    volume=float(item.get("f47", 0)) if item.get("f47") and item.get("f47") != "-" else None,
                 )
             )
 

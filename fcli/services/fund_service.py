@@ -1,16 +1,16 @@
 ﻿"""Fund service for data management."""
 
-import logging
 from datetime import datetime, timezone
 
 from dateutil.relativedelta import relativedelta
 
 from ..core.database import Database
 from ..core.models import Fund, FundDetail, FundType
-from ..core.stores import FundStore
+from ..core.stores.fund import fund_store
+from ..utils.logger import get_logger
 from .scrapers.fund_scraper import FundScraper
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.fund")
 
 
 class FundService:
@@ -62,7 +62,7 @@ class FundService:
             logger.warning("No funds scraped")
             return 0
 
-        saved_count = await FundStore.save_batch(funds)
+        saved_count = await fund_store.save_batch(funds)
         logger.info(f"Saved {saved_count} funds to database")
 
         return saved_count
@@ -79,17 +79,17 @@ class FundService:
             logger.warning("No US indices scraped")
             return 0
 
-        saved_count = await FundStore.save_batch(funds)
+        saved_count = await fund_store.save_batch(funds)
         logger.info(f"Saved {saved_count} US indices to database")
 
         return saved_count
 
     async def search(self, query: str, fund_type: FundType | None = None, limit: int = 20) -> list[Fund]:
-        return await FundStore.search(query, fund_type, limit)
+        return await fund_store.search(query, fund_type, limit)
 
     async def get_detail(self, code: str) -> FundDetail | None:
-        fund = await FundStore.get_by_code(code)
+        fund = await fund_store.get_by_code(code)
         if not fund:
             return None
-        scale_history = await FundStore.get_scale_history(code)
+        scale_history = await fund_store.get_scale_history(code)
         return FundDetail.from_fund(fund, scale_history)

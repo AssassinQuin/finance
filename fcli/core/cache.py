@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -10,8 +9,9 @@ from typing import Any
 from .config import config
 from .database import Database
 from .interfaces.cache import CacheABC
+from ..utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.cache")
 
 
 class FileCache(CacheABC):

@@ -1,21 +1,19 @@
-"""Gold supply/demand store for quarterly data using flat table.
+﻿"""Gold supply/demand store for quarterly data using flat table.
 
 Single table with all metrics as columns — no dimension joins needed.
 """
 
 from ..database import Database
 from ..models.gold_supply_demand import GoldSupplyDemand
+from ...utils.logger import get_logger
+
+_logger = get_logger("fcli.stores.gold_supply_demand")
 
 
 class GoldSupplyDemandStore:
     """Store for gold quarterly supply/demand data using flat table."""
 
-    @classmethod
-    async def save_quarterly(cls, data: GoldSupplyDemand) -> bool:
-        """Save or update quarterly supply/demand data.
-
-        Single INSERT — no dimension lookups, no N+1.
-        """
+    async def save_quarterly(self, data: GoldSupplyDemand) -> bool:
         if not Database.is_enabled():
             return False
 
@@ -74,12 +72,11 @@ class GoldSupplyDemandStore:
                 data.data_source or "WGC",
             )
             return True
-        except Exception:
+        except Exception as e:
+            _logger.error(f"Failed to save gold supply/demand {data.year}Q{data.quarter}: {e}")
             return False
 
-    @classmethod
-    async def get_by_quarter(cls, year: int, quarter: int) -> GoldSupplyDemand | None:
-        """Get supply/demand data for a specific quarter."""
+    async def get_by_quarter(self, year: int, quarter: int) -> GoldSupplyDemand | None:
         if not Database.is_enabled():
             return None
 
@@ -96,11 +93,9 @@ class GoldSupplyDemandStore:
         if not row:
             return None
 
-        return cls._row_to_model(row)
+        return self._row_to_model(row)
 
-    @classmethod
-    async def get_latest(cls) -> GoldSupplyDemand | None:
-        """Get the most recent quarter's data."""
+    async def get_latest(self) -> GoldSupplyDemand | None:
         if not Database.is_enabled():
             return None
 
@@ -116,11 +111,9 @@ class GoldSupplyDemandStore:
         if not row:
             return None
 
-        return cls._row_to_model(row)
+        return self._row_to_model(row)
 
-    @classmethod
-    async def get_history(cls, limit: int = 8) -> list[GoldSupplyDemand]:
-        """Get historical supply/demand data (last N quarters)."""
+    async def get_history(self, limit: int = 8) -> list[GoldSupplyDemand]:
         if not Database.is_enabled():
             return []
 
@@ -134,11 +127,9 @@ class GoldSupplyDemandStore:
             limit,
         )
 
-        return [cls._row_to_model(row) for row in rows]
+        return [self._row_to_model(row) for row in rows]
 
-    @classmethod
-    def _row_to_model(cls, row) -> GoldSupplyDemand:
-        """Convert database row to GoldSupplyDemand model."""
+    def _row_to_model(self, row) -> GoldSupplyDemand:
         year = row.get("year", 0)
         quarter = row.get("quarter", 0)
         return GoldSupplyDemand(
@@ -165,3 +156,6 @@ class GoldSupplyDemandStore:
             created_at=row.get("created_at"),
             updated_at=row.get("updated_at"),
         )
+
+
+gold_supply_demand_store = GoldSupplyDemandStore()

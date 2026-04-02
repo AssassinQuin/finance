@@ -1,14 +1,14 @@
-"""Fund store for database operations."""
+﻿"""Fund store for database operations."""
 
 import json
-import logging
 from datetime import date
 
 from ..database import Database
 from ..models import Fund, FundScale, FundType, InvestType
 from ..models.base import Market
+from ...utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.store.fund")
 
 _INSERT_SQL = """
     INSERT INTO funds (
@@ -35,10 +35,7 @@ _INSERT_SQL = """
 
 
 class FundStore:
-    """Store for fund data operations."""
-
-    @classmethod
-    async def save(cls, fund: Fund) -> bool:
+    async def save(self, fund: Fund) -> bool:
         if not Database.is_enabled():
             return False
 
@@ -65,8 +62,7 @@ class FundStore:
             logger.error(f"Failed to save fund {fund.code}: {e}")
             return False
 
-    @classmethod
-    async def save_batch(cls, funds: list[Fund]) -> int:
+    async def save_batch(self, funds: list[Fund]) -> int:
         if not Database.is_enabled():
             return 0
 
@@ -96,8 +92,7 @@ class FundStore:
             logger.error(f"Failed to save fund batch: {e}")
             return 0
 
-    @classmethod
-    async def save_scale(cls, scale: FundScale) -> bool:
+    async def save_scale(self, scale: FundScale) -> bool:
         if not Database.is_enabled():
             return False
 
@@ -125,8 +120,7 @@ class FundStore:
             logger.error(f"Failed to save fund scale {scale.fund_code}: {e}")
             return False
 
-    @classmethod
-    async def get_by_code(cls, code: str) -> Fund | None:
+    async def get_by_code(self, code: str) -> Fund | None:
         if not Database.is_enabled():
             return None
 
@@ -144,14 +138,13 @@ class FundStore:
             )
             if not row:
                 return None
-            return cls._row_to_model(dict(row))
+            return self._row_to_model(dict(row))
         except Exception as e:
             logger.error(f"Failed to get fund {code}: {e}")
             return None
 
-    @classmethod
     async def search(
-        cls,
+        self,
         query: str,
         fund_type: FundType | None = None,
         limit: int = 20,
@@ -160,7 +153,6 @@ class FundStore:
             return []
 
         try:
-            # Set lower similarity threshold for better fuzzy matching
             await Database.execute("SELECT set_limit(0.2)")
 
             sql = """
@@ -195,13 +187,12 @@ class FundStore:
             params.append(limit)
 
             rows = await Database.fetch_all(sql, *params)
-            return [cls._row_to_model(dict(row)) for row in rows]
+            return [self._row_to_model(dict(row)) for row in rows]
         except Exception as e:
             logger.error(f"Failed to search funds: {e}")
             return []
 
-    @classmethod
-    async def get_stale_funds(cls, days: int = 30) -> list[str]:
+    async def get_stale_funds(self, days: int = 30) -> list[str]:
         if not Database.is_enabled():
             return []
 
@@ -221,8 +212,7 @@ class FundStore:
             logger.error(f"Failed to get stale funds: {e}")
             return []
 
-    @classmethod
-    async def get_scale_history(cls, code: str, limit: int = 12) -> list[FundScale]:
+    async def get_scale_history(self, code: str, limit: int = 12) -> list[FundScale]:
         if not Database.is_enabled():
             return []
 
@@ -254,8 +244,7 @@ class FundStore:
             logger.error(f"Failed to get scale history for {code}: {e}")
             return []
 
-    @classmethod
-    def _row_to_model(cls, row: dict) -> Fund:
+    def _row_to_model(self, row: dict) -> Fund:
         extra_raw = row.get("extra")
         if isinstance(extra_raw, str):
             extra = json.loads(extra_raw) if extra_raw else {}
@@ -281,3 +270,6 @@ class FundStore:
             is_active=row.get("is_active", True),
             extra=extra,
         )
+
+
+fund_store = FundStore()

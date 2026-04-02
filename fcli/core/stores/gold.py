@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from typing import Any
 
+from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 from ..database import Database
 from ..models.gold import GoldReserve
@@ -12,8 +13,9 @@ from ..models.gold import GoldReserve
 class GoldReserveStore:
     """Store for gold reserve data using flat gold_reserves table."""
 
-    @classmethod
-    async def save(cls, data: GoldReserve) -> bool:
+    _logger = get_logger("fcli.stores.gold")
+
+    async def save(self, data: GoldReserve) -> bool:
         if not Database.is_enabled():
             return False
 
@@ -35,15 +37,14 @@ class GoldReserveStore:
                 utcnow(),
             )
             return True
-        except Exception:
+        except Exception as e:
+            self._logger.error(f"Failed to save gold reserve {data.country_code}: {e}")
             return False
 
-    @classmethod
-    async def save_many(cls, data_list: list[GoldReserve]) -> int:
-        return await cls.save_batch(data_list)
+    async def save_many(self, data_list: list[GoldReserve]) -> int:
+        return await self.save_batch(data_list)
 
-    @classmethod
-    async def save_batch(cls, data_list: list[GoldReserve]) -> int:
+    async def save_batch(self, data_list: list[GoldReserve]) -> int:
         if not Database.is_enabled() or not data_list:
             return 0
 
@@ -71,11 +72,11 @@ class GoldReserveStore:
                 args_list,
             )
             return len(args_list)
-        except Exception:
+        except Exception as e:
+            self._logger.error(f"Failed to save {len(data_list)} gold reserves: {e}")
             return 0
 
-    @classmethod
-    async def get_latest(cls, country_code: str | None = None) -> GoldReserve | None:
+    async def get_latest(self, country_code: str | None = None) -> GoldReserve | None:
         if not Database.is_enabled():
             return None
 
@@ -105,10 +106,9 @@ class GoldReserveStore:
         if not row:
             return None
 
-        return cls._row_to_model(row)
+        return self._row_to_model(row)
 
-    @classmethod
-    async def get_by_date(cls, data_date: date, country_code: str | None = None) -> GoldReserve | None:
+    async def get_by_date(self, data_date: date, country_code: str | None = None) -> GoldReserve | None:
         if not Database.is_enabled():
             return None
 
@@ -139,10 +139,9 @@ class GoldReserveStore:
         if not row:
             return None
 
-        return cls._row_to_model(row)
+        return self._row_to_model(row)
 
-    @classmethod
-    async def get_all_by_date(cls, data_date: date) -> list[GoldReserve]:
+    async def get_all_by_date(self, data_date: date) -> list[GoldReserve]:
         if not Database.is_enabled():
             return []
 
@@ -157,18 +156,16 @@ class GoldReserveStore:
             data_date,
         )
 
-        return [cls._row_to_model(row) for row in rows]
+        return [self._row_to_model(row) for row in rows]
 
-    @classmethod
-    async def get_latest_date(cls) -> date | None:
+    async def get_latest_date(self) -> date | None:
         if not Database.is_enabled():
             return None
 
         row = await Database.fetch_one("SELECT MAX(report_date) as max_date FROM gold_reserves")
         return row["max_date"] if row and row["max_date"] else None
 
-    @classmethod
-    async def get_all_latest_dates(cls) -> dict[str, date]:
+    async def get_all_latest_dates(self) -> dict[str, date]:
         if not Database.is_enabled():
             return {}
 
@@ -181,9 +178,8 @@ class GoldReserveStore:
         )
         return {row["country_code"]: row["latest_date"] for row in rows}
 
-    @classmethod
     async def get_latest_with_stats(
-        cls,
+        self,
         min_date: date | None = None,
     ) -> list[dict]:
         if not Database.is_enabled():
@@ -253,9 +249,8 @@ class GoldReserveStore:
 
         return [dict(row) for row in rows]
 
-    @classmethod
     async def get_country_history(
-        cls,
+        self,
         country_code: str,
         days: int = 365,
     ) -> list[GoldReserve]:
@@ -275,11 +270,10 @@ class GoldReserveStore:
             country_code,
         )
 
-        return [cls._row_to_model(row) for row in rows]
+        return [self._row_to_model(row) for row in rows]
 
-    @classmethod
     async def get_top_countries_history(
-        cls,
+        self,
         top_n: int = 5,
         months: int = 36,
     ) -> dict[str, list[dict]]:
@@ -330,8 +324,7 @@ class GoldReserveStore:
 
         return result
 
-    @classmethod
-    def _row_to_model(cls, row: Any) -> GoldReserve:
+    def _row_to_model(self, row: Any) -> GoldReserve:
         return GoldReserve(
             country_code=row["country_code"],
             country_name=row["country_name"],
@@ -343,3 +336,4 @@ class GoldReserveStore:
 
 
 GoldStore = GoldReserveStore
+gold_reserve_store = GoldReserveStore()

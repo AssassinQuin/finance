@@ -4,31 +4,25 @@ Provides gold reserve data access with database-first strategy
 and IMF API fallback.
 """
 
-import logging
 from datetime import date, datetime
 from typing import Any
 
 from dateutil.relativedelta import relativedelta
 
-from ..core.config import Settings, config
 from ..core.database import Database
+from ..utils.logger import get_logger
 from ..utils.time_util import utcnow
 from ..core.models.gold import GoldReserve
-from ..core.stores.gold import GoldReserveStore
+from ..core.stores.gold import gold_reserve_store
 from .scrapers.imf_scraper import IMFScraper
 
-logger = logging.getLogger(__name__)
+logger = get_logger("fcli.gold_reserve")
 
 
 class GoldReserveService:
     """Service for accessing gold reserve data."""
 
-    def __init__(
-        self,
-        config: Settings | None = None,
-        imf_scraper: IMFScraper | None = None,
-    ):
-        self._config = config
+    def __init__(self, imf_scraper: IMFScraper | None = None):
         self._imf_scraper = imf_scraper or IMFScraper()
 
     async def fetch_all_with_auto_update(self, force: bool = False) -> list[dict]:
@@ -50,7 +44,7 @@ class GoldReserveService:
 
         if Database.is_enabled():
             try:
-                results = await GoldReserveStore.get_latest_with_stats(
+                results = await gold_reserve_store.get_latest_with_stats(
                     min_date=(date.today() + relativedelta(months=-6)).replace(day=1)
                 )
                 if results:
@@ -83,7 +77,7 @@ class GoldReserveService:
         try:
             target_date = date.today().replace(day=1) - relativedelta(months=1)
 
-            latest_dates = await GoldReserveStore.get_all_latest_dates()
+            latest_dates = await gold_reserve_store.get_all_latest_dates()
             if not latest_dates:
                 # No data at all, do full refresh
                 await self.save_to_database(years=1)
@@ -154,7 +148,7 @@ class GoldReserveService:
             if not reserves:
                 return 0
 
-            total_saved = await GoldReserveStore.save_batch(reserves)
+            total_saved = await gold_reserve_store.save_batch(reserves)
             logger.info("Saved %d gold reserve records", total_saved)
             return total_saved
 
@@ -175,7 +169,7 @@ class GoldReserveService:
         if Database.is_enabled():
             try:
                 days = months * 30
-                records = await GoldReserveStore.get_country_history(country_code, days)
+                records = await gold_reserve_store.get_country_history(country_code, days)
                 if records:
                     return [
                         {
@@ -232,7 +226,7 @@ class GoldReserveService:
         if not Database.is_enabled():
             return {}
 
-        return await GoldReserveStore.get_top_countries_history(top_n, months)
+        return await gold_reserve_store.get_top_countries_history(top_n, months)
 
     def get_supported_countries(self) -> dict[str, str]:
         """Return dict of supported country codes to names.

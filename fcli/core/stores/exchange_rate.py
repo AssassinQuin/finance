@@ -4,13 +4,15 @@ from datetime import datetime, timezone
 
 from ..database import Database
 from ..models import ExchangeRate
+from ...utils.logger import get_logger
+
+_logger = get_logger("fcli.stores.exchange_rate")
 
 
 class ExchangeRateStore:
     """Store for exchange rate data using flat fx_rates table."""
 
-    @classmethod
-    async def save(cls, rate: ExchangeRate) -> bool:
+    async def save(self, rate: ExchangeRate) -> bool:
         """Save exchange rate to fx_rates table."""
         if not Database.is_enabled():
             return False
@@ -34,11 +36,11 @@ class ExchangeRateStore:
                 now,
             )
             return True
-        except Exception:
+        except Exception as e:
+            _logger.error(f"Failed to save exchange rate {rate.base_currency}/{rate.quote_currency}: {e}")
             return False
 
-    @classmethod
-    async def get_latest(cls, base_currency: str, quote_currency: str) -> ExchangeRate | None:
+    async def get_latest(self, base_currency: str, quote_currency: str) -> ExchangeRate | None:
         """Get latest exchange rate for a currency pair."""
         if not Database.is_enabled():
             return None
@@ -66,8 +68,7 @@ class ExchangeRateStore:
             update_time=row["rate_time"],
         )
 
-    @classmethod
-    async def get_all_for_base(cls, base_currency: str) -> list[ExchangeRate]:
+    async def get_all_for_base(self, base_currency: str) -> list[ExchangeRate]:
         """Get all latest rates for a base currency."""
         if not Database.is_enabled():
             return []
@@ -94,8 +95,7 @@ class ExchangeRateStore:
             for row in rows
         ]
 
-    @classmethod
-    async def get_history(cls, base_currency: str, quote_currency: str, days: int = 30) -> list[ExchangeRate]:
+    async def get_history(self, base_currency: str, quote_currency: str, days: int = 30) -> list[ExchangeRate]:
         """Get historical rates for a currency pair."""
         if not Database.is_enabled():
             return []
@@ -124,8 +124,7 @@ class ExchangeRateStore:
             for row in rows
         ]
 
-    @classmethod
-    def _row_to_model(cls, row: dict) -> ExchangeRate:
+    def _row_to_model(self, row: dict) -> ExchangeRate:
         return ExchangeRate(
             base_currency=row.get("base_currency", ""),
             quote_currency=row.get("quote_currency", ""),
@@ -134,3 +133,5 @@ class ExchangeRateStore:
             update_time=row.get("rate_time"),
         )
 
+
+exchange_rate_store = ExchangeRateStore()

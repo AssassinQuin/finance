@@ -3,10 +3,8 @@ from typing import Annotated
 
 import typer
 
-from ..core.config import config
 from ..core.container import container
-from ..core.database import Database
-from ..infra.http_client import run_async
+from ..utils.command import run_command
 from ..utils.presenter import ConsolePresenter
 
 app = typer.Typer(help="黄金数据", context_settings={"help_option_names": ["-h", "--help"]})
@@ -24,15 +22,11 @@ def reserves(
         fcli gold              # 查询黄金储备
         fcli gold -u           # 强制更新数据
     """
-    try:
-        run_async(_reserves(update))
-    except Exception as e:
-        ConsolePresenter.print_error(f"获取黄金储备失败: {e}")
-        raise typer.Exit(1) from e
+    run_command(_reserves(update), "获取黄金储备失败")
 
 
 async def _reserves(update: bool) -> None:
-    async with Database.session(config):
+    async with container.session():
         status_msg = "强制更新数据..." if update else "获取黄金储备数据..."
         with ConsolePresenter.status(status_msg):
             reserves = await container.gold_reserve_service.fetch_all_with_auto_update(force=update)
@@ -60,15 +54,11 @@ def supply():
     示例:
         fcli gold supply
     """
-    try:
-        run_async(_supply())
-    except Exception as e:
-        ConsolePresenter.print_error(f"获取供需数据失败: {e}")
-        raise typer.Exit(1) from e
+    run_command(_supply(), "获取供需数据失败")
 
 
 async def _supply():
-    async with Database.session(config):
+    async with container.session():
         with ConsolePresenter.status("获取黄金供需数据..."):
             balance = await container.gold_supply_demand_service.fetch_global_supply_demand()
         if balance:

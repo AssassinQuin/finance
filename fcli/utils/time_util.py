@@ -6,7 +6,7 @@ from fcli.core.models.base import Market
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.utcnow()
 
 
 def normalize_time(time_str: str) -> str:
@@ -83,4 +83,3 @@ def is_trading_hours(market: Market, check_time: datetime | None = None) -> bool
             return start <= current_time <= end
 
     return False
-
