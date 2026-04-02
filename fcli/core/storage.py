@@ -99,8 +99,11 @@ class PostgresStorage(StorageABC):
         return await self._store.get_assets()
 
     async def save(self, assets: list[Asset]):
-        for asset in assets:
-            await self._store.add(asset)
+        import asyncio
+
+        if not assets:
+            return
+        await asyncio.gather(*[self._store.add(asset) for asset in assets])
 
     async def add(self, asset: Asset) -> bool:
         return await self._store.add(asset)

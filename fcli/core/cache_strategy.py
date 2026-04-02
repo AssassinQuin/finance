@@ -127,10 +127,10 @@ class AssetTypeCacheStrategy(CacheStrategyBase):
 
         # 如果有交易时段配置且提供了市场信息
         if "trading" in ttl_config and market is not None:
-            from ..utils.time_util import is_trading_hours
+            from ..utils.time_util import is_trading_hours, now_for_market
 
             if check_time is None:
-                check_time = datetime.now()
+                check_time = now_for_market(market)
 
             in_trading = is_trading_hours(market, check_time)
             return ttl_config["trading"] if in_trading else ttl_config["non_trading"]

@@ -2,12 +2,11 @@
 
 import json
 import re
-from datetime import datetime
 from typing import Any
 
 from ...core.config import Settings
 from ...core.interfaces.source import QuoteSourceABC
-from ...core.models import Asset, Market, Quote
+from ...core.models import Asset, Quote
 from ...infra.http_client import HttpClient
 from ...utils.logger import quote_logger as logger
 from ...utils.time_util import utcnow
@@ -23,14 +22,6 @@ class FundQuoteSource(QuoteSourceABC):
     @property
     def name(self) -> str:
         return "fund_1234567"
-
-    @property
-    def priority(self) -> int:
-        return 100
-
-    @property
-    def supported_markets(self) -> list[Market]:
-        return [Market.CN]
 
     async def is_available(self) -> bool:
         return True

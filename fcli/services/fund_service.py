@@ -1,13 +1,12 @@
 ﻿"""Fund service for data management."""
 
-from datetime import datetime, timezone
-
 from dateutil.relativedelta import relativedelta
 
 from ..core.database import Database
 from ..core.models import Fund, FundDetail, FundType
 from ..core.stores.fund import fund_store
 from ..utils.logger import get_logger
+from ..utils.time_util import utcnow
 from .scrapers.fund_scraper import FundScraper
 
 logger = get_logger("fcli.fund")
@@ -20,7 +19,6 @@ class FundService:
         self.scraper = fund_scraper or FundScraper()
 
     async def needs_monthly_update(self) -> bool:
-        """Check if monthly update is needed."""
         if not Database.is_enabled():
             return False
 
@@ -30,10 +28,7 @@ class FundService:
                 return True
 
             last_update = row["last_update"]
-            now = datetime.now(timezone.utc)
-
-            if last_update.tzinfo is None:
-                last_update = last_update.replace(tzinfo=timezone.utc)
+            now = utcnow()
 
             threshold = now - relativedelta(months=1)
             return last_update < threshold

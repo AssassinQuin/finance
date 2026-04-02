@@ -1,12 +1,25 @@
 ﻿import re
 from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 from fcli.core.config import config
 from fcli.core.models.base import Market
 
+MARKET_TIMEZONES: dict[Market, ZoneInfo] = {
+    Market.CN: ZoneInfo("Asia/Shanghai"),
+    Market.HK: ZoneInfo("Asia/Hong_Kong"),
+    Market.US: ZoneInfo("America/New_York"),
+    Market.GLOBAL: ZoneInfo("UTC"),
+}
+
 
 def utcnow() -> datetime:
     return datetime.utcnow()
+
+
+def now_for_market(market: Market) -> datetime:
+    tz = MARKET_TIMEZONES.get(market, ZoneInfo("UTC"))
+    return datetime.now(tz).replace(tzinfo=None)
 
 
 def normalize_time(time_str: str) -> str:
@@ -16,22 +29,16 @@ def normalize_time(time_str: str) -> str:
     if not time_str or time_str in ["Parse Error", "N/A", ""]:
         return "-"
 
-    # Normalize separators
     time_str = time_str.replace("/", "-").strip()
 
-    # Format: YYYY-MM-DD HH:mm:ss -> YYYY-MM-DD HH:mm
-    # Also matches YYYY-MM-DD HH:mm
     match = re.match(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?::\d{2})?", time_str)
     if match:
         return f"{match.group(1)} {match.group(2)}"
 
-    # Format: YYYY-MM-DD -> YYYY-MM-DD 00:00 (Unified format for dates without time)
     match = re.match(r"^(\d{4}-\d{2}-\d{2})$", time_str)
     if match:
         return f"{match.group(1)} 00:00"
 
-    # Format: HH:mm:ss -> YYYY-MM-DD HH:mm
-    # Also matches HH:mm
     match = re.match(r"^(\d{2}:\d{2})(?::\d{2})?$", time_str)
     if match:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -47,7 +54,7 @@ def _parse_time(time_str: str) -> time:
 
 def is_trading_hours(market: Market, check_time: datetime | None = None) -> bool:
     if check_time is None:
-        check_time = datetime.now()
+        check_time = now_for_market(market)
 
     current_time = check_time.time()
     weekday = check_time.weekday()
@@ -81,5 +88,8 @@ def is_trading_hours(market: Market, check_time: datetime | None = None) -> bool
             return current_time >= start or current_time <= end
         else:
             return start <= current_time <= end
+
+    elif market == Market.GLOBAL:
+        return weekday < 5
 
     return False

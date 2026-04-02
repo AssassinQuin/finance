@@ -18,14 +18,6 @@ class EastmoneyQuoteSource(QuoteSourceABC):
     def name(self) -> str:
         return "eastmoney"
 
-    @property
-    def priority(self) -> int:
-        return 50
-
-    @property
-    def supported_markets(self) -> list[Market]:
-        return [Market.CN, Market.HK, Market.US, Market.GLOBAL]
-
     async def is_available(self) -> bool:
         return True
 

@@ -1,7 +1,5 @@
 ﻿"""新浪行情数据源"""
 
-from datetime import datetime
-
 from ...core.config import Settings
 from ...core.interfaces.source import QuoteSourceABC
 from ...core.models import Asset, Market, Quote
@@ -20,14 +18,6 @@ class SinaQuoteSource(QuoteSourceABC):
     @property
     def name(self) -> str:
         return "sina"
-
-    @property
-    def priority(self) -> int:
-        return 100
-
-    @property
-    def supported_markets(self) -> list[Market]:
-        return [Market.CN, Market.HK, Market.US]
 
     async def is_available(self) -> bool:
         return True

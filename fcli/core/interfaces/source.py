@@ -18,16 +18,6 @@ class DataSourceABC(ABC):
     def name(self) -> str:
         pass
 
-    @property
-    @abstractmethod
-    def priority(self) -> int:
-        pass
-
-    @property
-    @abstractmethod
-    def supported_markets(self) -> "list[Market]":
-        pass
-
     @abstractmethod
     async def is_available(self) -> bool:
         pass
@@ -45,17 +35,8 @@ class QuoteSourceABC(DataSourceABC):
         pass
 
 
-class ForexSourceABC(ABC):
+class ForexSourceABC(DataSourceABC):
     """Abstract base class for forex rate sources."""
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        pass
-
-    @abstractmethod
-    async def is_available(self) -> bool:
-        pass
 
     @abstractmethod
     async def fetch_rate(self, base_currency: str, quote_currency: str) -> "ExchangeRate | None":

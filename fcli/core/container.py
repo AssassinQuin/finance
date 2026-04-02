@@ -115,7 +115,10 @@ class Container:
             from ..services.scrapers.imf_scraper import IMFScraper
 
             self._gold_reserve_service = GoldReserveService(
-                imf_scraper=IMFScraper(),
+                imf_scraper=IMFScraper(
+                    http_client=self.http_client,
+                    settings=self._config,
+                ),
             )
         return self._gold_reserve_service
 
@@ -126,7 +129,9 @@ class Container:
             from ..services.scrapers.wgc_scraper import WGCScraper
 
             self._gold_supply_demand_service = GoldSupplyDemandService(
-                wgc_scraper=WGCScraper(),
+                wgc_scraper=WGCScraper(
+                    http_client=self.http_client,
+                ),
             )
         return self._gold_supply_demand_service
 

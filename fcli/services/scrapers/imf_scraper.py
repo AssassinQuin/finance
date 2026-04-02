@@ -20,9 +20,9 @@ from datetime import datetime, timedelta
 
 import aiohttp
 
-from fcli.core.config import config
+from fcli.core.config import Settings
 from fcli.core.models.gold import GoldReserve
-from fcli.infra.http_client import http_client
+from fcli.infra.http_client import HttpClient
 from fcli.utils.logger import get_logger
 from fcli.utils.time_util import utcnow
 
@@ -123,7 +123,14 @@ class IMFScraper:
 
     BATCH_CONCURRENCY = 5
 
-    def __init__(self, country_codes: dict[str, str] | None = None):
+    def __init__(
+        self,
+        http_client: HttpClient,
+        settings: Settings,
+        country_codes: dict[str, str] | None = None,
+    ):
+        self._http_client = http_client
+        self._config = settings
         self.api_key = self._get_api_key()
         self.headers = {"Accept": "application/json"}
         if self.api_key:
@@ -134,15 +141,14 @@ class IMFScraper:
         self._semaphore = asyncio.Semaphore(self.BATCH_CONCURRENCY)
 
     def _get_api_key(self) -> str | None:
-        return config.api.imf_primary
+        return self._config.api.imf_primary
 
     def _get_proxy(self, url: str) -> str | None:
-        """Get proxy for URL, matching http_client's proxy selection logic."""
-        if not config.proxy.enabled:
+        if not self._config.proxy.enabled:
             return None
         if url.startswith("https://"):
-            return config.proxy.https or config.proxy.http
-        return config.proxy.http
+            return self._config.proxy.https or self._config.proxy.http
+        return self._config.proxy.http
 
     async def close(self):
         pass
@@ -173,7 +179,7 @@ class IMFScraper:
 
         for attempt in range(self.MAX_RETRIES):
             try:
-                session = await http_client.get_session()
+                session = await self._http_client.get_session()
                 timeout = aiohttp.ClientTimeout(total=60, connect=30)
                 proxy = self._get_proxy(url)
 

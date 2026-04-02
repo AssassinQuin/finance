@@ -1,11 +1,10 @@
-﻿from datetime import datetime
-from typing import Any
+﻿from typing import Any
 
 from ..core.database import Database
-from ..utils.logger import get_logger
-from ..utils.time_util import utcnow
 from ..core.models.gold_supply_demand import GoldSupplyDemand
 from ..core.stores.gold_supply_demand import gold_supply_demand_store
+from ..utils.logger import get_logger
+from ..utils.time_util import utcnow
 from .scrapers.wgc_scraper import WGCScraper
 
 logger = get_logger("fcli.gold_supply_demand")
@@ -14,8 +13,8 @@ logger = get_logger("fcli.gold_supply_demand")
 class GoldSupplyDemandService:
     """Service for gold supply and demand data."""
 
-    def __init__(self, wgc_scraper: WGCScraper | None = None):
-        self._wgc_scraper = wgc_scraper or WGCScraper()
+    def __init__(self, wgc_scraper: WGCScraper):
+        self._wgc_scraper = wgc_scraper
 
     async def fetch_global_supply_demand(self, force_update: bool = False) -> dict | None:
         if not force_update and Database.is_enabled():

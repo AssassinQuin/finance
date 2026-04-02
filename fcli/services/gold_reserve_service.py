@@ -10,10 +10,10 @@ from typing import Any
 from dateutil.relativedelta import relativedelta
 
 from ..core.database import Database
-from ..utils.logger import get_logger
-from ..utils.time_util import utcnow
 from ..core.models.gold import GoldReserve
 from ..core.stores.gold import gold_reserve_store
+from ..utils.logger import get_logger
+from ..utils.time_util import utcnow
 from .scrapers.imf_scraper import IMFScraper
 
 logger = get_logger("fcli.gold_reserve")
@@ -22,8 +22,8 @@ logger = get_logger("fcli.gold_reserve")
 class GoldReserveService:
     """Service for accessing gold reserve data."""
 
-    def __init__(self, imf_scraper: IMFScraper | None = None):
-        self._imf_scraper = imf_scraper or IMFScraper()
+    def __init__(self, imf_scraper: IMFScraper):
+        self._imf_scraper = imf_scraper
 
     async def fetch_all_with_auto_update(self, force: bool = False) -> list[dict]:
         """Fetch latest gold reserves with auto-update.
@@ -277,7 +277,7 @@ class GoldReserveService:
         formatted = []
         for row in results:
             report_date = row.get("report_date")
-            if isinstance(report_date, (date, datetime)):
+            if isinstance(report_date, date | datetime):
                 date_str = report_date.strftime("%Y-%m")
             else:
                 date_str = str(report_date) if report_date else ""

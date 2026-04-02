@@ -18,7 +18,7 @@ from fcli.core.config import config
 from fcli.core.database import Database
 from fcli.core.models import GoldReserve
 from fcli.core.stores.gold import gold_reserve_store
-from fcli.infra.http_client import run_async
+from fcli.infra.http_client import HttpClient, run_async
 from fcli.services.scrapers.imf_scraper import IMFScraper
 from fcli.utils.time_util import utcnow
 
@@ -272,7 +272,7 @@ async def main():
         return
 
     try:
-        scraper = IMFScraper()
+        scraper = IMFScraper(http_client=HttpClient(), settings=config)
 
         if args.latest:
             saved = await save_latest_reserves(scraper, country_codes)

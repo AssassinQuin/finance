@@ -22,7 +22,7 @@ import logging
 
 from fcli.core.models.gold_supply_demand import GoldSupplyDemand
 from fcli.core.stores.gold_supply_demand import gold_supply_demand_store
-from fcli.infra.http_client import run_async
+from fcli.infra.http_client import HttpClient, run_async
 from fcli.services.scrapers.wgc_scraper import QuarterlySupplyDemand, WGCScraper
 
 logging.basicConfig(
@@ -91,7 +91,7 @@ async def import_from_file(file_path: str, force: bool = False) -> int:
     """
     logger.info(f"Importing from file: {file_path}")
 
-    scraper = WGCScraper()
+    scraper = WGCScraper(http_client=HttpClient())
     data = scraper.fetch_from_local(file_path)
     if not data:
         logger.error("No data found in file")
@@ -132,7 +132,7 @@ async def import_from_download(force: bool = False) -> int:
     """
     logger.info("Downloading latest WGC data...")
 
-    scraper = WGCScraper()
+    scraper = WGCScraper(http_client=HttpClient())
     data = await scraper.fetch_latest()
     if not data:
         logger.error("Could not download any data")

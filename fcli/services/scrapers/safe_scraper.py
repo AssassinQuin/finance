@@ -11,10 +11,11 @@ from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
+from ...core.config import Settings
 from ...core.models import GoldReserve
+from ...infra.http_client import HttpClient
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
-from ...infra.http_client import http_client
 from .base import BaseScraper
 
 logger = get_logger("fcli.scraper.safe")
@@ -32,26 +33,23 @@ class SAFEScraper(BaseScraper):
     转换公式: 1万盎司 = 0.311035吨
     """
 
-    # 万盎司转吨 (从配置获取)
     @property
     def WAN_OZ_TO_TONNE(self) -> float:
-        from ...core.config import config
-
-        return config.gold.wan_oz_to_tonne
+        return self._config.gold.wan_oz_to_tonne
 
     BASE_URL = "https://www.safe.gov.cn"
     INDEX_URL = "https://www.safe.gov.cn/safe/whcb/index.html"
 
-    # 官方储备资产历史URL (每年一份页面，包含 Excel 下载链接)
-    # 注意: 旧版 URL 可能失效，实际使用时会从索引页动态发现
     YEAR_URLS = {
         2026: "https://www.safe.gov.cn/safe/2026/0205/27113.html",
         2025: "https://www.safe.gov.cn/safe/2025/0206/25745.html",
         2020: "https://www.safe.gov.cn/safe/2020/0207/26908.html",
     }
 
-    def __init__(self):
+    def __init__(self, http_client: HttpClient, settings: Settings):
         super().__init__()
+        self._http_client = http_client
+        self._config = settings
         self._source_name = "SAFE"
 
     @property
@@ -86,7 +84,7 @@ class SAFEScraper(BaseScraper):
                 logger.info(f"Fetching SAFE data for {year}...")
 
                 # 1. 获取年度页面 HTML
-                html = await http_client.fetch(url, text_mode=True)
+                html = await self._http_client.fetch(url, text_mode=True)
 
                 if not html:
                     continue
@@ -137,7 +135,7 @@ class SAFEScraper(BaseScraper):
             return None
 
         try:
-            html = await http_client.fetch(url, text_mode=True)
+            html = await self._http_client.fetch(url, text_mode=True)
 
             if not html:
                 return None
@@ -171,7 +169,7 @@ class SAFEScraper(BaseScraper):
         discovered = {}
 
         try:
-            html = await http_client.fetch(self.INDEX_URL, text_mode=True)
+            html = await self._http_client.fetch(self.INDEX_URL, text_mode=True)
             if not html:
                 return discovered
 
@@ -193,7 +191,7 @@ class SAFEScraper(BaseScraper):
 
                 # 检查该页面是否有 Excel 文件
                 try:
-                    page_html = await http_client.fetch(full_url, text_mode=True)
+                    page_html = await self._http_client.fetch(full_url, text_mode=True)
                     if page_html and ".xlsx" in page_html.lower():
                         discovered[year] = full_url
                         logger.debug(f"Discovered Excel page for {year}: {full_url}")
@@ -248,7 +246,7 @@ class SAFEScraper(BaseScraper):
             import pandas as pd
 
             # 下载 Excel 文件
-            content = await http_client.fetch(xlsx_url, binary_mode=True)
+            content = await self._http_client.fetch(xlsx_url, binary_mode=True)
             if not content:
                 logger.warning(f"Failed to download Excel from {xlsx_url}")
                 return []

@@ -23,7 +23,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from ...core.models.gold_supply_demand import GoldSupplyDemand
-from ...infra.http_client import http_client
+from ...infra.http_client import HttpClient
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 
@@ -64,11 +64,11 @@ class WGCScraper:
     # Maximum number of quarters to try when discovering
     MAX_QUARTERS_TO_TRY = 12
 
-    def __init__(self):
+    def __init__(self, http_client: HttpClient):
+        self._http_client = http_client
         self._last_successful_url: str | None = None
 
     async def close(self):
-        """Close resources (no-op for WGCScraper, uses global http_client)"""
         pass
 
     def _build_url(self, year: int, quarter: int) -> str:
@@ -149,7 +149,7 @@ class WGCScraper:
             List of GoldSupplyDemand records or None if failed
         """
         try:
-            content = await http_client.get_binary(url)
+            content = await self._http_client.get_binary(url)
             if content is None or len(content) < 1000:
                 logger.debug(f"Invalid content from {url}")
                 return None
@@ -176,14 +176,13 @@ class WGCScraper:
         """
         # Try primary URL pattern
         url = self._build_url(year, quarter)
-        content = await http_client.get_binary(url)
+        content = await self._http_client.get_binary(url)
         if content and len(content) > 1000:
             logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
             return content
 
-        # Try alternative URL pattern
         alt_url = self._build_alternative_url(year, quarter)
-        content = await http_client.get_binary(alt_url)
+        content = await self._http_client.get_binary(alt_url)
         if content and len(content) > 1000:
             logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
             return content
