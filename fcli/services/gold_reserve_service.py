@@ -9,12 +9,24 @@ from typing import Any
 
 from dateutil.relativedelta import relativedelta
 
+from ..core.cache_strategy import CacheStrategyBase
 from ..core.database import Database
+from ..core.interfaces.cache import CacheABC
+from ..core.models.asset import AssetType
 from ..core.models.gold import GoldReserve
 from ..core.stores.gold import gold_reserve_store
 from ..utils.logger import get_logger
 from ..utils.time_util import utcnow
 from .scrapers.imf_scraper import IMFScraper
+
+CACHE_KEY_LATEST = "gold:reserves:latest"
+
+
+def _to_float(v: Any) -> float | None:
+    if v is None:
+        return None
+    return float(v)
+
 
 logger = get_logger("fcli.gold_reserve")
 
@@ -22,13 +34,23 @@ logger = get_logger("fcli.gold_reserve")
 class GoldReserveService:
     """Service for accessing gold reserve data."""
 
-    def __init__(self, imf_scraper: IMFScraper):
+    def __init__(
+        self,
+        imf_scraper: IMFScraper,
+        cache: CacheABC,
+        cache_strategy: CacheStrategyBase,
+    ):
         self._imf_scraper = imf_scraper
+        self._cache = cache
+        self._cache_strategy = cache_strategy
 
     async def fetch_all_with_auto_update(self, force: bool = False) -> list[dict]:
         """Fetch latest gold reserves with auto-update.
 
         Main entry point used by CLI commands. Returns presenter-format dicts.
+
+        Uses cache with GOLD TTL (default 24h). Pass force=True to bypass
+        cache and force a fresh IMF API fetch.
 
         Args:
             force: If True, refresh data from IMF before fetching.
@@ -37,11 +59,27 @@ class GoldReserveService:
             List of dicts with keys: country, code, amount, date, source,
             yoy_change, ytd_change, monthly_trend, trend_r2.
         """
+        if not force:
+            cached = await self._cache.async_get(CACHE_KEY_LATEST)
+            if cached:
+                logger.debug("Gold reserves cache hit")
+                return cached
+
         if force:
             await self.save_to_database(years=1)
         else:
             await self._check_and_update_stale_data()
 
+        results = await self._fetch_from_db_or_api()
+
+        if results:
+            ttl = self._cache_strategy.get_ttl(AssetType.GOLD)
+            await self._cache.async_set(CACHE_KEY_LATEST, results, ttl)
+
+        return results
+
+    async def _fetch_from_db_or_api(self) -> list[dict]:
+        """Try DB first, then fall back to IMF API."""
         if Database.is_enabled():
             try:
                 results = await gold_reserve_store.get_latest_with_stats(
@@ -52,7 +90,6 @@ class GoldReserveService:
             except Exception as e:
                 logger.warning("DB query failed, falling back to IMF API: %s", e)
 
-        # Fallback to IMF API
         try:
             reserves = await self._imf_scraper.batch_get_latest_reserves()
             return [
@@ -259,8 +296,8 @@ class GoldReserveService:
         return {
             "country": country_name,
             "code": country_code,
-            "amount": amount,
-            "date": period,
+            "amount": float(amount) if amount else 0.0,
+            "date": period.strftime("%Y-%m") if isinstance(period, date | datetime) else str(period) if period else "",
             "source": source,
         }
 
@@ -289,10 +326,10 @@ class GoldReserveService:
                     "amount": float(row.get("gold_tonnes", 0)),
                     "date": date_str,
                     "source": row.get("source_name", ""),
-                    "yoy_change": row.get("yoy_change"),
-                    "ytd_change": row.get("ytd_change"),
-                    "monthly_trend": row.get("monthly_trend"),
-                    "trend_r2": row.get("trend_r2"),
+                    "yoy_change": _to_float(row.get("yoy_change")),
+                    "ytd_change": _to_float(row.get("ytd_change")),
+                    "monthly_trend": [_to_float(v) for v in (row.get("monthly_trend") or [])],
+                    "trend_r2": _to_float(row.get("trend_r2")),
                 }
             )
         return formatted

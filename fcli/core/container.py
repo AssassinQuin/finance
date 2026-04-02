@@ -119,6 +119,8 @@ class Container:
                     http_client=self.http_client,
                     settings=self._config,
                 ),
+                cache=self.cache,
+                cache_strategy=self.cache_strategy,
             )
         return self._gold_reserve_service
 
