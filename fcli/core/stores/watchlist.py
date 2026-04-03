@@ -1,9 +1,8 @@
 ﻿import json
-from datetime import datetime
 
+from ...utils.time_util import utcnow
 from ..database import Database
 from ..models import Asset, AssetType, Market, WatchlistAssetDB
-from ...utils.time_util import utcnow
 
 
 class WatchlistAssetStore:

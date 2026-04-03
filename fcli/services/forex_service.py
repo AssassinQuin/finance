@@ -12,7 +12,7 @@ from ..core.interfaces.source import ForexSourceABC
 from ..core.models import ExchangeRate
 from ..core.stores.exchange_rate import exchange_rate_store
 from ..infra.http_client import HttpClient, http_client
-from ..utils.currency import COMMON_CURRENCIES, format_currency_display, get_currency_name
+from ..utils.currency import COMMON_CURRENCIES
 
 
 class ForexService:

@@ -41,7 +41,7 @@ async def check_v2_schema() -> bool:
 
     existing = await Database.fetch_all(
         """
-        SELECT table_name FROM information_schema.tables 
+        SELECT table_name FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = ANY($1)
         """,
         required,
@@ -237,7 +237,7 @@ async def migrate_quotes():
         return 0
 
     await Database.execute("""
-        INSERT INTO quotes (code, name, asset_type, price, change_amount, change_percent, 
+        INSERT INTO quotes (code, name, asset_type, price, change_amount, change_percent,
                            high_price, low_price, open_price, prev_close, volume, quote_time, data_source, created_at)
         SELECT
             a.asset_code,

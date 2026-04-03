@@ -1,8 +1,9 @@
 ﻿"""Gold reserves store - PostgreSQL flat table implementation."""
 
-from datetime import date, datetime, timedelta
-from dateutil.relativedelta import relativedelta
+from datetime import date
 from typing import Any
+
+from dateutil.relativedelta import relativedelta
 
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow

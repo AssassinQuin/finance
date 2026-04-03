@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..models import Asset, ExchangeRate, Market, Quote
+    from ..models import Asset, ExchangeRate, Quote
 
 
 class DataSourceABC(ABC):

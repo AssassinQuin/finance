@@ -2,9 +2,9 @@
 
 from datetime import date, datetime
 
+from ...utils.logger import get_logger
 from ..database import Database
 from ..models import GPRHistory
-from ...utils.logger import get_logger
 
 _logger = get_logger("fcli.stores.gpr")
 

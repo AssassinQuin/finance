@@ -3,9 +3,9 @@
 Single table with all metrics as columns — no dimension joins needed.
 """
 
+from ...utils.logger import get_logger
 from ..database import Database
 from ..models.gold_supply_demand import GoldSupplyDemand
-from ...utils.logger import get_logger
 
 _logger = get_logger("fcli.stores.gold_supply_demand")
 

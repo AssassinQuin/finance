@@ -1,5 +1,5 @@
 ﻿import re
-from datetime import datetime, time, timezone
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from fcli.core.config import config

@@ -5,7 +5,7 @@ from .base import AssetType, Market
 from .fund import Fund, FundDetail, FundScale, FundSearchResult, FundType, InvestType
 from .gold import GoldReserve
 from .gold_supply_demand import GoldSupplyDemand
-from .gpr import GPR_COUNTRY_NAMES, GPRIndexType, GPRHistory
+from .gpr import GPR_COUNTRY_NAMES, GPRHistory, GPRIndexType
 from .log import WatchlistAssetDB
 
 __all__ = [

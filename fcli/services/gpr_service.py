@@ -6,7 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 
 from dateutil.relativedelta import relativedelta
 
-from ..core.config import Settings, config as _config
+from ..core.config import Settings
+from ..core.config import config as _config
 from ..core.database import Database
 from ..core.models import GPRHistory
 from ..core.stores.gpr import gpr_history_store

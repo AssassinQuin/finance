@@ -10,22 +10,20 @@ Usage:
 """
 
 import asyncio
-import atexit
 from contextlib import asynccontextmanager
-from typing import AsyncContextManager
 
 import asyncpg
 
+from ..utils.logger import get_logger
 from .config import config
 from .exceptions import DatabaseError
-from ..utils.logger import get_logger
 
 
 class _TransactionContext:
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
         self._conn: asyncpg.Connection | None = None
-        self._tx: "asyncpg.Transaction | None" = None
+        self._tx: asyncpg.Transaction | None = None
 
     async def __aenter__(self) -> "asyncpg.Transaction":
         self._conn = await self._pool.acquire()

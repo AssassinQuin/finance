@@ -51,7 +51,7 @@ class FundPresenter(BasePresenter):
         lines = []
         lines.append(f"[bold cyan]{fund.code}[/bold cyan] - {fund.name}")
         lines.append("")
-        lines.append(f"[bold]基本信息[/bold]")
+        lines.append("[bold]基本信息[/bold]")
         lines.append(f"  基金类型: {type_label}")
         lines.append(f"  投资类型: {fund.invest_type.value if fund.invest_type else '-'}")
         lines.append(f"  市场: {fund.market.value}")
@@ -60,7 +60,7 @@ class FundPresenter(BasePresenter):
         lines.append(f"  成立日期: {fund.inception_date or '-'}")
         lines.append(f"  上市日期: {fund.listing_date or '-'}")
         lines.append("")
-        lines.append(f"[bold]费用信息[/bold]")
+        lines.append("[bold]费用信息[/bold]")
         lines.append(
             f"  管理费: {fund.management_fee * 100:.4f}% ({fund.management_fee})"
             if fund.management_fee
@@ -70,7 +70,7 @@ class FundPresenter(BasePresenter):
             f"  托管费: {fund.custody_fee * 100:.4f}% ({fund.custody_fee})" if fund.custody_fee else "  托管费: -"
         )
         lines.append("")
-        lines.append(f"[bold]规模数据[/bold]")
+        lines.append("[bold]规模数据[/bold]")
         lines.append(f"  当前规模: {fund.scale:.2f} 亿元" if fund.scale else "  当前规模: -")
         lines.append(f"  份额: {fund.share:.2f} 亿份" if fund.share else "  份额: -")
         lines.append(f"  单位净值: {fund.nav:.4f}" if fund.nav else "  单位净值: -")
@@ -99,7 +99,7 @@ class FundPresenter(BasePresenter):
 class ForexPresenter(BasePresenter):
     @staticmethod
     def print_exchange_rate(rate: ExchangeRate):
-        from ..services.forex_service import get_currency_name
+        from .currency import get_currency_name
 
         cn_name = get_currency_name(rate.quote_currency)
         console.print(

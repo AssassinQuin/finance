@@ -1,9 +1,8 @@
 ﻿"""GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
 
 import asyncio
-from datetime import date, datetime
+from datetime import datetime
 from io import BytesIO
-from typing import Literal
 
 import aiohttp
 import pandas as pd
@@ -170,7 +169,7 @@ class GPRScraper:
         df = pd.read_excel(BytesIO(excel_data), sheet_name=0)
         date_col = "month"
 
-        for idx, row in df.iterrows():
+        for _idx, row in df.iterrows():
             period = _parse_period(row.get(date_col))
             if not period:
                 continue
@@ -201,7 +200,7 @@ class GPRScraper:
         df = pd.read_excel(BytesIO(excel_data), sheet_name=0)
         date_col = "month"
 
-        for idx, row in df.iterrows():
+        for _idx, row in df.iterrows():
             period = _parse_period(row.get(date_col))
             if not period:
                 continue

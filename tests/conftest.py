@@ -1,21 +1,12 @@
 """Pytest configuration and fixtures."""
 
-import asyncio
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 
 from fcli.core.config import Settings
 from fcli.core.database import Database
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator:
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -31,6 +22,7 @@ async def db_setup() -> AsyncGenerator:
 def sample_gold_data():
     """Sample gold reserve data for testing."""
     from datetime import date
+
     from fcli.core.models import GoldReserve
 
     return GoldReserve(
@@ -46,6 +38,7 @@ def sample_gold_data():
 def sample_gpr_data():
     """Sample GPR data for testing."""
     from datetime import date
+
     from fcli.core.models import GPRHistory
 
     return GPRHistory(

@@ -1,9 +1,9 @@
 ﻿"""Exchange rate store - flat table implementation."""
 
-from ..database import Database
-from ..models import ExchangeRate
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
+from ..database import Database
+from ..models import ExchangeRate
 
 _logger = get_logger("fcli.stores.exchange_rate")
 

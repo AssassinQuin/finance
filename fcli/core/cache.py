@@ -6,10 +6,10 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from ..utils.logger import get_logger
 from .config import config
 from .database import Database
 from .interfaces.cache import CacheABC
-from ..utils.logger import get_logger
 
 logger = get_logger("fcli.cache")
 
