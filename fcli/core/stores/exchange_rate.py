@@ -1,10 +1,9 @@
 ﻿"""Exchange rate store - flat table implementation."""
 
-from datetime import datetime, timezone
-
 from ..database import Database
 from ..models import ExchangeRate
 from ...utils.logger import get_logger
+from ...utils.time_util import utcnow
 
 _logger = get_logger("fcli.stores.exchange_rate")
 
@@ -18,7 +17,7 @@ class ExchangeRateStore:
             return False
 
         try:
-            now = rate.update_time or datetime.now(timezone.utc)
+            rate_time = rate.update_time or utcnow()
 
             await Database.execute(
                 """
@@ -26,14 +25,15 @@ class ExchangeRateStore:
                     base_currency, quote_currency, rate_time, rate, data_source, created_at
                 ) VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (base_currency, quote_currency, DATE(rate_time)) DO UPDATE SET
-                    rate = EXCLUDED.rate
+                    rate = EXCLUDED.rate,
+                    data_source = EXCLUDED.data_source
                 """,
                 rate.base_currency.upper(),
                 rate.quote_currency.upper(),
-                now,
+                rate_time,
                 rate.rate,
                 rate.source or "Frankfurter",
-                now,
+                utcnow(),
             )
             return True
         except Exception as e:
