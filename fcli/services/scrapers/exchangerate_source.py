@@ -1,4 +1,4 @@
-﻿"""ExchangeRate-API 汇率数据源"""
+"""ExchangeRate-API 汇率数据源"""
 
 from ...core.config import Settings
 from ...core.interfaces.source import ForexSourceABC

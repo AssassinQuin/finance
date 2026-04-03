@@ -1,4 +1,4 @@
-﻿"""Watchlist service for managing user's tracked assets."""
+"""Watchlist service for managing user's tracked assets."""
 
 from ..core.factories import AssetFactory
 from ..core.interfaces.storage import StorageABC

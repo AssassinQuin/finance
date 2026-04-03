@@ -1,8 +1,7 @@
-﻿"""Unit test fixtures for command tests."""
+"""Unit test fixtures for command tests."""
 
-from contextlib import asynccontextmanager
 from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

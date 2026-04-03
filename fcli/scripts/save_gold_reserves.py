@@ -1,4 +1,4 @@
-﻿"""
+"""
 Save gold reserves history to database using IMF SDMX 3.0 API.
 
 Data source: IMF IRFCL (International Reserves and Foreign Currency Liquidity)

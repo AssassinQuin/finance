@@ -1,4 +1,4 @@
-﻿"""Gold reserve data service.
+"""Gold reserve data service.
 
 Provides gold reserve data access with database-first strategy
 and IMF API fallback.

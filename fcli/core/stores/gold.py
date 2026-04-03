@@ -1,4 +1,4 @@
-﻿"""Gold reserves store - PostgreSQL flat table implementation."""
+"""Gold reserves store - PostgreSQL flat table implementation."""
 
 from datetime import date
 from typing import Any

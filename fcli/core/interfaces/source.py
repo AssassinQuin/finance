@@ -1,4 +1,4 @@
-﻿"""Data Source Abstract Interfaces.
+"""Data Source Abstract Interfaces.
 
 Defines contracts for data source services.
 """

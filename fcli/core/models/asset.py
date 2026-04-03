@@ -1,4 +1,4 @@
-﻿"""Asset and Quote models."""
+"""Asset and Quote models."""
 
 from datetime import datetime
 from typing import Any

@@ -11,17 +11,18 @@ FCLI is a command-line financial data tool built with Python, async/await patter
 Simple flat tables — no JOINs, no dimension tables, no star schema.
 
 **Data Tables:**
-| Table | Description |
-|-------|-------------|
-| `gold_reserves` | Central bank gold reserves (country_code, country_name, gold_tonnes, report_date) |
-| `gpr_history` | Geopolitical risk index (country_code, report_date, gpr_index) |
-| `quotes` | Asset price quotes (code, name, price, change_percent, quote_time) |
-| `fx_rates` | Foreign exchange rates (base_currency, quote_currency, rate, rate_time) |
-| `gold_supply_demand` | Gold supply/demand quarterly data (year, quarter, all metrics) |
-| `funds` | Fund metadata (fund_code, fund_name) |
-| `fund_scales` | Fund scale history (fund_id, scale, scale_date) |
-| `watchlist_assets` | User watchlist (code, added_at) |
-| `cache_entries` | UNLOGGED cache table |
+
+| Table                  | Description                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `gold_reserves`      | Central bank gold reserves (country_code, country_name, gold_tonnes, report_date) |
+| `gpr_history`        | Geopolitical risk index (country_code, report_date, gpr_index)                    |
+| `quotes`             | Asset price quotes (code, name, price, change_percent, quote_time)                |
+| `fx_rates`           | Foreign exchange rates (base_currency, quote_currency, rate, rate_time)           |
+| `gold_supply_demand` | Gold supply/demand quarterly data (year, quarter, all metrics)                    |
+| `funds`              | Fund metadata (fund_code, fund_name)                                              |
+| `fund_scales`        | Fund scale history (fund_id, scale, scale_date)                                   |
+| `watchlist_assets`   | User watchlist (code, added_at)                                                   |
+| `cache_entries`      | UNLOGGED cache table                                                              |
 
 ### SQL Queries
 
@@ -326,7 +327,7 @@ fcli/
 2. Create Store class in `fcli/core/stores/` (single flat table, no JOINs)
 3. Add command in `fcli/commands/`
 
-### Modifying Existing Data
+* [ ] Modifying Existing Data
 
 1. Update table schema (ALTER TABLE or recreate)
 2. Update Store class queries
@@ -335,10 +336,10 @@ fcli/
 
 ## Performance Optimization
 
-- UNLOGGED tables for cache (`cache_entries`)
-- Proper indexes on flat tables
-- Connection pooling via asyncpg
-- `execute_many()` for batch writes
+- [ ] UNLOGGED tables for cache (`cache_entries`)
+- [ ] Proper indexes on flat tables
+- [ ] Connection pooling via asyncpg
+- [ ] `execute_many()` for batch writes
 
 ## Error Handling
 
@@ -351,3 +352,7 @@ fcli/
 - Environment variables for credentials (`.env`)
 - No hardcoded passwords
 - SQL injection prevention via parameterized queries
+
+## Code Quality
+
+- 所有文件修改后必须运行 ruff 检查并修复格式问题：`ruff check --fix && ruff format`

@@ -1,4 +1,4 @@
-﻿"""Fund service for data management."""
+"""Fund service for data management."""
 
 from dateutil.relativedelta import relativedelta
 

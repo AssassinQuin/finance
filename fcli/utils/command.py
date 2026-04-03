@@ -1,4 +1,4 @@
-﻿from collections.abc import Coroutine
+from collections.abc import Coroutine
 from typing import Any, TypeVar
 
 import typer

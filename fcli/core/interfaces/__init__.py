@@ -1,4 +1,4 @@
-﻿"""Interfaces package - abstract contracts for dependency injection."""
+"""Interfaces package - abstract contracts for dependency injection."""
 
 from .cache import CacheABC
 from .source import (

@@ -1,4 +1,4 @@
-﻿"""
+"""
 World Gold Council (WGC) Supply/Demand Data Scraper.
 
 Data source: https://www.gold.org/goldhub/data/demand-and-supply

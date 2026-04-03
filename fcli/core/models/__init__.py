@@ -1,4 +1,4 @@
-﻿"""Models package - unified data models."""
+"""Models package - unified data models."""
 
 from .asset import Asset, ExchangeRate, Quote
 from .base import AssetType, Market

@@ -1,4 +1,4 @@
-﻿"""Gold supply and demand quarterly data model."""
+"""Gold supply and demand quarterly data model."""
 
 from datetime import datetime
 

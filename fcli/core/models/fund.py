@@ -1,4 +1,4 @@
-﻿"""Fund market data models."""
+"""Fund market data models."""
 
 from datetime import date, datetime
 from enum import Enum

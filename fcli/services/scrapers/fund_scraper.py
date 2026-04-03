@@ -1,4 +1,4 @@
-﻿"""Fund scraper using AKShare."""
+"""Fund scraper using AKShare."""
 
 import asyncio
 from datetime import date, datetime

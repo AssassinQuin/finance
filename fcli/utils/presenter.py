@@ -1,4 +1,4 @@
-﻿from .fund_presenter import ForexPresenter, FundPresenter
+from .fund_presenter import ForexPresenter, FundPresenter
 from .gold_presenter import GoldPresenter
 from .quote_presenter import QuotePresenter
 

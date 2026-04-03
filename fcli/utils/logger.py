@@ -1,4 +1,4 @@
-﻿"""结构化日志工具
+"""结构化日志工具
 
 支持 JSON 格式输出，记录关键操作信息。
 """
@@ -73,6 +73,7 @@ class StructuredLogger:
     def _resolve_level(cls) -> int:
         if cls._default_level is None:
             import os
+
             level_str = os.environ.get("FCLI_LOG_LEVEL", "INFO").upper()
             cls._default_level = getattr(logging, level_str, logging.INFO)
         return cls._default_level

@@ -1,4 +1,4 @@
-﻿"""Market command - fund search and detail."""
+"""Market command - fund search and detail."""
 
 from typing import Annotated
 

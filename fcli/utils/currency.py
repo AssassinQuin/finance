@@ -1,4 +1,3 @@
-﻿
 COMMON_CURRENCIES = {
     "USD": "美元",
     "CNY": "人民币",

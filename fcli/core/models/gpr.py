@@ -1,4 +1,4 @@
-﻿"""GPR (Geopolitical Risk Index) models."""
+"""GPR (Geopolitical Risk Index) models."""
 
 from datetime import date, datetime
 from enum import Enum

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Import WGC Gold Supply/Demand data from Excel file to database.
 
 Usage:

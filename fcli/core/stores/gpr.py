@@ -1,4 +1,4 @@
-﻿"""GPR (Geopolitical Risk Index) store for flat table operations."""
+"""GPR (Geopolitical Risk Index) store for flat table operations."""
 
 from datetime import date, datetime
 

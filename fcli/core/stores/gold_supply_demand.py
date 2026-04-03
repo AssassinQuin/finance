@@ -1,4 +1,4 @@
-﻿"""Gold supply/demand store for quarterly data using flat table.
+"""Gold supply/demand store for quarterly data using flat table.
 
 Single table with all metrics as columns — no dimension joins needed.
 """

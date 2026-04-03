@@ -1,4 +1,4 @@
-﻿"""基金行情数据源 (fundgz.1234567.com.cn)"""
+"""基金行情数据源 (fundgz.1234567.com.cn)"""
 
 import json
 import re

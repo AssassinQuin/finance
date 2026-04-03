@@ -1,19 +1,16 @@
-﻿"""检查黄金供需相关表结构"""
+"""检查黄金供需相关表结构"""
+
 import asyncio
-from fcli.core.database import Database
+
 from fcli.core.config import config
+from fcli.core.database import Database
 
 
 async def main():
     await Database.init(config)
-    
-    tables = [
-        'gold_supply_demand',
-        'fact_gold_supply_demand',
-        'dim_metric',
-        'dim_period'
-    ]
-    
+
+    tables = ["gold_supply_demand", "fact_gold_supply_demand", "dim_metric", "dim_period"]
+
     for table in tables:
         print(f"\n=== {table} 表结构 ===")
         try:
@@ -31,7 +28,7 @@ async def main():
                 print("  表不存在或无列")
         except Exception as e:
             print(f"  ERROR: {e}")
-    
+
     await Database.close()
 
 

@@ -1,4 +1,4 @@
-﻿"""Frankfurter API (欧洲央行) 汇率数据源"""
+"""Frankfurter API (欧洲央行) 汇率数据源"""
 
 from datetime import datetime
 

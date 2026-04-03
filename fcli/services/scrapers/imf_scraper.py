@@ -1,4 +1,4 @@
-﻿"""
+"""
 IMF SDMX 3.0 API Gold Reserves Scraper.
 
 Uses IMF IRFCL (International Reserves and Foreign Currency Liquidity) dataset.

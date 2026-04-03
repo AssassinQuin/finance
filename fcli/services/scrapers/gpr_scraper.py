@@ -1,4 +1,4 @@
-﻿"""GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
+"""GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
 
 import asyncio
 from datetime import datetime
@@ -214,12 +214,14 @@ class GPRScraper:
                     continue
                 fval = float(val)
                 if fval > 0:
-                    records.append({
-                        "period": period,
-                        "country_code": "WLD",
-                        "index_type": index_type,
-                        "value": round(fval, 4),
-                    })
+                    records.append(
+                        {
+                            "period": period,
+                            "country_code": "WLD",
+                            "index_type": index_type,
+                            "value": round(fval, 4),
+                        }
+                    )
 
             if include_countries:
                 for col_name, country_code in COUNTRY_CODE_MAP.items():
@@ -228,12 +230,14 @@ class GPRScraper:
                         continue
                     fval = float(val)
                     if fval > 0:
-                        records.append({
-                            "period": period,
-                            "country_code": country_code,
-                            "index_type": "GPR",
-                            "value": round(fval, 4),
-                        })
+                        records.append(
+                            {
+                                "period": period,
+                                "country_code": country_code,
+                                "index_type": "GPR",
+                                "value": round(fval, 4),
+                            }
+                        )
 
         logger.info(f"Parsed {len(records)} full GPR data points")
         return records

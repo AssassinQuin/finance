@@ -1,4 +1,4 @@
-﻿import re
+import re
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 

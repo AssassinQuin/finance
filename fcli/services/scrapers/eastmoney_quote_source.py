@@ -1,4 +1,4 @@
-﻿"""东方财富行情数据源"""
+"""东方财富行情数据源"""
 
 from ...core.config import Settings
 from ...core.interfaces.source import QuoteSourceABC

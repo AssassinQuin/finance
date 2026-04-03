@@ -1,4 +1,4 @@
-﻿"""Logging and system models."""
+"""Logging and system models."""
 
 from datetime import datetime
 from typing import Any

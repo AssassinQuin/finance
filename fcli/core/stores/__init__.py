@@ -1,4 +1,4 @@
-﻿"""Store classes for data access layer."""
+"""Store classes for data access layer."""
 
 from .exchange_rate import ExchangeRateStore
 from .fund import FundStore

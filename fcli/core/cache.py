@@ -1,4 +1,4 @@
-﻿"""Cache implementations - PostgreSQL UNLOGGED + File fallback."""
+"""Cache implementations - PostgreSQL UNLOGGED + File fallback."""
 
 import asyncio
 import json

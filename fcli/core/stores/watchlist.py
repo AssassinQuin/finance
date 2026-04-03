@@ -1,4 +1,4 @@
-﻿import json
+import json
 
 from ...utils.time_util import utcnow
 from ..database import Database
@@ -6,7 +6,6 @@ from ..models import Asset, AssetType, Market, WatchlistAssetDB
 
 
 class WatchlistAssetStore:
-
     def _row_to_model(self, row: dict) -> WatchlistAssetDB:
         extra_data = row.get("extra")
         if isinstance(extra_data, str):

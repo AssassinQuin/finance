@@ -1,4 +1,4 @@
-﻿"""Quote store - flat table implementation."""
+"""Quote store - flat table implementation."""
 
 from datetime import datetime, timezone
 

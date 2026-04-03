@@ -1,4 +1,4 @@
-﻿"""Base enums and types shared across models."""
+"""Base enums and types shared across models."""
 
 from enum import Enum
 

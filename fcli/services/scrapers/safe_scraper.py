@@ -1,4 +1,4 @@
-﻿"""
+"""
 国家外汇管理局 (SAFE) 官方黄金储备爬虫
 数据来源: https://www.safe.gov.cn
 权威数据，比 AkShare 更准确

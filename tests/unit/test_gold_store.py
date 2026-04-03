@@ -1,10 +1,11 @@
 """Unit tests for GoldReserveStore."""
 
-import pytest
 from datetime import date
 
-from fcli.core.stores.gold import GoldReserveStore
+import pytest
+
 from fcli.core.models import GoldReserve
+from fcli.core.stores.gold import GoldReserveStore
 
 
 @pytest.mark.asyncio

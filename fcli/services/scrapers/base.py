@@ -1,4 +1,4 @@
-﻿"""Base scraper class. Provides common fetch/parse/scrape pattern for all scrapers."""
+"""Base scraper class. Provides common fetch/parse/scrape pattern for all scrapers."""
 
 import time
 from abc import ABC, abstractmethod

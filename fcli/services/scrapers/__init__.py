@@ -1,4 +1,4 @@
-﻿"""
+"""
 Gold reserve data scrapers.
 Primary sources: IMF SDMX 3.0 API, World Gold Council
 """

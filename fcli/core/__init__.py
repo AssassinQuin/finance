@@ -1,4 +1,4 @@
-﻿"""Core module exports."""
+"""Core module exports."""
 
 from . import models, stores
 from .config import config

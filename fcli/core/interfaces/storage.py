@@ -1,4 +1,4 @@
-﻿"""Storage Abstract Interface.
+"""Storage Abstract Interface.
 
 Defines the contract for storage implementations.
 """

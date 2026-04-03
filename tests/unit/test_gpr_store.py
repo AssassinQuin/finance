@@ -1,10 +1,9 @@
 """Unit tests for GPRHistoryStore."""
 
 import pytest
-from datetime import date
 
-from fcli.core.stores.gpr import GPRHistoryStore
 from fcli.core.models import GPRHistory
+from fcli.core.stores.gpr import GPRHistoryStore
 
 
 @pytest.mark.asyncio

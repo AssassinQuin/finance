@@ -1,4 +1,4 @@
-﻿"""Dependency injection container.
+"""Dependency injection container.
 
 Centralized management of all service dependencies for decoupling and testability.
 """

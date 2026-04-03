@@ -1,4 +1,4 @@
-﻿"""Fund store for database operations."""
+"""Fund store for database operations."""
 
 import json
 

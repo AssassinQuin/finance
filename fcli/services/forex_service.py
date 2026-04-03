@@ -1,4 +1,4 @@
-﻿"""
+"""
 汇率查询服务
 支持 Frankfurter API (欧洲央行汇率) 和 ExchangeRate-API
 """

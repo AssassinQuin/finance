@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import atexit
 import json
 from collections.abc import Coroutine

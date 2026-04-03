@@ -1,4 +1,4 @@
-﻿import plotext as plt
+import plotext as plt
 from rich import box
 from rich.columns import Columns
 from rich.panel import Panel

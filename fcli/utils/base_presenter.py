@@ -1,4 +1,4 @@
-﻿from rich.console import Console
+from rich.console import Console
 
 from ..core.config import config
 

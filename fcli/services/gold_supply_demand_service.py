@@ -1,4 +1,4 @@
-﻿from typing import Any
+from typing import Any
 
 from ..core.database import Database
 from ..core.models.gold_supply_demand import GoldSupplyDemand

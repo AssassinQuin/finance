@@ -1,4 +1,4 @@
-﻿"""PostgreSQL database connection pool manager.
+"""PostgreSQL database connection pool manager.
 
 Replaces MySQL (aiomysql) with PostgreSQL (asyncpg) for "Just Use Postgres" architecture.
 

@@ -1,4 +1,4 @@
-﻿"""Storage implementations - PostgreSQL + File fallback."""
+"""Storage implementations - PostgreSQL + File fallback."""
 
 import json
 import os

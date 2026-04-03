@@ -1,4 +1,4 @@
-﻿from rich import box
+from rich import box
 from rich.table import Table
 
 from ..core.models import Asset, Quote

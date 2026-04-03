@@ -1,4 +1,4 @@
-﻿"""Exchange rate store - flat table implementation."""
+"""Exchange rate store - flat table implementation."""
 
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
