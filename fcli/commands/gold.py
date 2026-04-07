@@ -12,6 +12,7 @@ app = typer.Typer(help="黄金数据", context_settings={"help_option_names": ["
 
 @app.callback(invoke_without_command=True)
 def reserves(
+    ctx: typer.Context,
     update: Annotated[bool, typer.Option("-u", "--update", help="强制更新数据")] = False,
 ):
     """全球黄金储备报告 (默认命令)
@@ -22,6 +23,8 @@ def reserves(
         fcli gold              # 查询黄金储备
         fcli gold -u           # 强制更新数据
     """
+    if ctx.invoked_subcommand is not None:
+        return
     run_command(_reserves(update), "获取黄金储备失败")
 
 
@@ -48,19 +51,23 @@ async def _reserves(update: bool) -> None:
 
 
 @app.command()
-def supply():
+def supply(
+    update: Annotated[bool, typer.Option("-u", "--update", help="强制更新供需数据")] = False,
+):
     """黄金供需数据
 
     示例:
         fcli gold supply
+        fcli gold supply -u
     """
-    run_command(_supply(), "获取供需数据失败")
+    run_command(_supply(update), "获取供需数据失败")
 
 
-async def _supply():
+async def _supply(update: bool):
     async with container.session():
-        with ConsolePresenter.status("获取黄金供需数据..."):
-            balance = await container.gold_supply_demand_service.fetch_global_supply_demand()
+        status_msg = "强制更新黄金供需数据..." if update else "获取黄金供需数据..."
+        with ConsolePresenter.status(status_msg):
+            balance = await container.gold_supply_demand_service.fetch_global_supply_demand(force_update=update)
         if balance:
             ConsolePresenter.print_gold_supply_balance(balance)
         else:

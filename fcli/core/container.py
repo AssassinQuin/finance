@@ -112,7 +112,9 @@ class Container:
     def gold_reserve_service(self) -> GoldReserveService:
         if self._gold_reserve_service is None:
             from ..services.gold_reserve_service import GoldReserveService
+            from ..services.scrapers.akshare_scraper import AkShareScraper
             from ..services.scrapers.imf_scraper import IMFScraper
+            from ..services.scrapers.ria_scraper import RIAScraper
 
             self._gold_reserve_service = GoldReserveService(
                 imf_scraper=IMFScraper(
@@ -121,6 +123,8 @@ class Container:
                 ),
                 cache=self.cache,
                 cache_strategy=self.cache_strategy,
+                akshare_scraper=AkShareScraper(),
+                ria_scraper=RIAScraper(http_client=self.http_client),
             )
         return self._gold_reserve_service
 

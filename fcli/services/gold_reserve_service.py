@@ -17,7 +17,9 @@ from ..core.models.gold import GoldReserve
 from ..core.stores.gold import gold_reserve_store
 from ..utils.logger import get_logger
 from ..utils.time_util import utcnow
+from .scrapers.akshare_scraper import AkShareScraper
 from .scrapers.imf_scraper import IMFScraper
+from .scrapers.ria_scraper import RIAScraper
 
 CACHE_KEY_LATEST = "gold:reserves:latest"
 
@@ -39,10 +41,14 @@ class GoldReserveService:
         imf_scraper: IMFScraper,
         cache: CacheABC,
         cache_strategy: CacheStrategyBase,
+        akshare_scraper: AkShareScraper | None = None,
+        ria_scraper: RIAScraper | None = None,
     ):
         self._imf_scraper = imf_scraper
         self._cache = cache
         self._cache_strategy = cache_strategy
+        self._akshare_scraper = akshare_scraper
+        self._ria_scraper = ria_scraper
 
     async def fetch_all_with_auto_update(self, force: bool = False) -> list[dict]:
         """Fetch latest gold reserves with auto-update.
@@ -79,7 +85,12 @@ class GoldReserveService:
         return results
 
     async def _fetch_from_db_or_api(self) -> list[dict]:
-        """Try DB first, then fall back to IMF API."""
+        """Try DB first, then fall back to online APIs.
+
+        Fallback strategy:
+        - CHN: PBOC (AkShare) primary, IMF backup.
+        - Other countries: IMF.
+        """
         if Database.is_enabled():
             try:
                 results = await gold_reserve_store.get_latest_with_stats(
@@ -88,11 +99,11 @@ class GoldReserveService:
                 if results:
                     return self._format_stats_results(results)
             except Exception as e:
-                logger.warning("DB query failed, falling back to IMF API: %s", e)
+                logger.warning("DB query failed, falling back to online APIs: %s", e)
 
         try:
             reserves = await self._imf_scraper.batch_get_latest_reserves()
-            return [
+            results = [
                 self._transform_imf_to_dict(
                     country_name=r.country_name,
                     country_code=r.country_code,
@@ -102,8 +113,59 @@ class GoldReserveService:
                 )
                 for r in reserves
             ]
+
+            if self._akshare_scraper:
+                try:
+                    china_latest = await self._akshare_scraper.get_china_latest()
+                    if china_latest:
+                        results = [r for r in results if r["code"] != "CHN"]
+                        results.append(
+                            self._transform_imf_to_dict(
+                                country_name=china_latest.country_name,
+                                country_code=china_latest.country_code,
+                                amount=china_latest.amount_tonnes,
+                                period=china_latest.report_date,
+                                source="PBOC",
+                            )
+                        )
+                except Exception as e:
+                    logger.warning("PBOC fallback for CHN failed, using IMF: %s", e)
+
+            if self._ria_scraper:
+                try:
+                    russia_latest = await self._ria_scraper.get_russia_latest()
+                    if russia_latest and russia_latest.amount_tonnes:
+                        results = [r for r in results if r["code"] != "RUS"]
+                        results.append(
+                            self._transform_imf_to_dict(
+                                country_name=russia_latest.country_name,
+                                country_code=russia_latest.country_code,
+                                amount=russia_latest.amount_tonnes,
+                                period=russia_latest.report_date,
+                                source="RIA",
+                            )
+                        )
+                except Exception as e:
+                    logger.warning("RIA fallback for RUS failed, using IMF: %s", e)
+
+            return results
         except Exception as e:
-            logger.error("IMF API fallback also failed: %s", e)
+            if self._akshare_scraper:
+                try:
+                    china_latest = await self._akshare_scraper.get_china_latest()
+                    if china_latest:
+                        return [
+                            self._transform_imf_to_dict(
+                                country_name=china_latest.country_name,
+                                country_code=china_latest.country_code,
+                                amount=china_latest.amount_tonnes,
+                                period=china_latest.report_date,
+                                source="PBOC",
+                            )
+                        ]
+                except Exception:
+                    pass
+            logger.error("All online APIs failed: %s", e)
             return []
 
     async def _check_and_update_stale_data(self, country_codes=None):
@@ -139,7 +201,12 @@ class GoldReserveService:
             logger.warning("Stale data check failed: %s", e)
 
     async def save_to_database(self, country_codes=None, years: int = 10) -> int:
-        """Fetch gold reserve history from IMF and save to database.
+        """Fetch gold reserve history and save to database.
+
+        Strategy:
+        - CHN: PBOC (AkShare) primary, IMF backup if PBOC fails.
+        - RUS: RIA Novosti primary, IMF backup if RIA fails.
+        - Other countries: IMF primary.
 
         Args:
             country_codes: Optional list of country codes to fetch.
@@ -149,48 +216,133 @@ class GoldReserveService:
         Returns:
             Number of records saved.
         """
-        try:
-            # batch_get_history_dict returns list[dict] with keys:
-            # country_code, country_name, data (dict of period→tonnes)
-            history = await self._imf_scraper.batch_get_history_dict(country_codes, years=years)
+        total_saved = 0
 
-            if not history:
-                logger.warning("No history data returned from IMF scraper")
-                return 0
+        direct_only = country_codes is not None and set(country_codes) <= {"CHN", "RUS"}
+        need_china = country_codes is None or "CHN" in (country_codes or [])
+        need_russia = country_codes is None or "RUS" in (country_codes or [])
 
-            reserves: list[GoldReserve] = []
-            fetch_time = utcnow()
+        imf_codes: list[str] = []
 
-            for country_data in history:
-                code = country_data.get("country_code", "")
-                name = country_data.get("country_name", code)
-                for period, tonnes in country_data.get("data", {}).items():
-                    if tonnes is None:
-                        continue
-                    try:
-                        report_date = datetime.strptime(period, "%Y-%m").date()
-                    except ValueError:
-                        continue
-                    reserves.append(
-                        GoldReserve(
-                            country_code=code,
-                            country_name=name,
-                            amount_tonnes=float(tonnes),
-                            report_date=report_date,
-                            data_source="IMF",
-                            fetch_time=fetch_time,
-                        )
-                    )
+        if need_china:
+            pboc_saved = await self._update_china_from_pboc(years=years)
+            total_saved += pboc_saved
+            if pboc_saved == 0:
+                logger.warning("PBOC failed for CHN, falling back to IMF")
+                imf_codes.append("CHN")
 
-            if not reserves:
-                return 0
+        if need_russia:
+            ria_saved = await self._update_russia_from_ria()
+            total_saved += ria_saved
+            if ria_saved == 0:
+                logger.warning("RIA failed for RUS, falling back to IMF")
+                imf_codes.append("RUS")
 
-            total_saved = await gold_reserve_store.save_batch(reserves)
-            logger.info("Saved %d gold reserve records", total_saved)
+        remaining = [c for c in (country_codes or []) if c not in ("CHN", "RUS")]
+        if remaining:
+            imf_codes.extend(remaining)
+
+        if not imf_codes and country_codes is None:
+            pass
+        elif not imf_codes and direct_only:
             return total_saved
 
+        if imf_codes or country_codes is None:
+            try:
+                fetch_codes = imf_codes if imf_codes else None
+                history = await self._imf_scraper.batch_get_history_dict(fetch_codes, years=years)
+
+                if not history:
+                    logger.warning("No history data returned from IMF scraper")
+                else:
+                    reserves: list[GoldReserve] = []
+                    fetch_time = utcnow()
+
+                    for country_data in history:
+                        code = country_data.get("country_code", "")
+                        name = country_data.get("country_name", code)
+                        for period, tonnes in country_data.get("data", {}).items():
+                            if tonnes is None:
+                                continue
+                            try:
+                                report_date = datetime.strptime(period, "%Y-%m").date()
+                            except ValueError:
+                                continue
+                            reserves.append(
+                                GoldReserve(
+                                    country_code=code,
+                                    country_name=name,
+                                    amount_tonnes=float(tonnes),
+                                    report_date=report_date,
+                                    data_source="IMF",
+                                    fetch_time=fetch_time,
+                                )
+                            )
+
+                    if reserves:
+                        saved = await gold_reserve_store.save_batch(reserves)
+                        total_saved += saved
+                        logger.info("Saved %d IMF gold reserve records", saved)
+            except Exception as e:
+                logger.error("Failed to save IMF gold reserves: %s", e)
+
+        return total_saved
+
+    async def _update_china_from_pboc(self, years: int = 10) -> int:
+        """Fetch China gold reserves from PBOC via AkShare and save to DB.
+
+        PBOC publishes data faster than IMF (domestic release around the 7th
+        of each month vs 1-3 month lag on IMF database).
+
+        Args:
+            years: Number of years of history to save.
+
+        Returns:
+            Number of records saved, or 0 if AkShare is not configured.
+        """
+        if not self._akshare_scraper:
+            return 0
+
+        try:
+            reserves = await self._akshare_scraper.get_china_history()
+            if not reserves:
+                logger.warning("PBOC (AkShare) returned no China data")
+                return 0
+
+            if years < 10:
+                cutoff = date.today() - relativedelta(years=years)
+                reserves = [r for r in reserves if r.report_date >= cutoff]
+
+            saved = await gold_reserve_store.save_batch(reserves)
+            logger.info("Saved %d PBOC China gold reserve records", saved)
+            return saved
         except Exception as e:
-            logger.error("Failed to save gold reserves to database: %s", e)
+            logger.warning("PBOC China update failed: %s", e)
+            return 0
+
+    async def _update_russia_from_ria(self) -> int:
+        """Fetch Russia gold reserves from RIA Novosti and save to DB.
+
+        RIA publishes CBR physical gold volume data (tonnes or million troy
+        ounces) shortly after CBR's monthly reserve press release.
+
+        Returns:
+            Number of records saved, or 0 if RIA scraper is not configured.
+        """
+        if not self._ria_scraper:
+            return 0
+
+        try:
+            reserve = await self._ria_scraper.get_russia_latest()
+            if not reserve:
+                logger.warning("RIA Novosti returned no Russia data")
+                return 0
+
+            saved = await gold_reserve_store.save_batch([reserve])
+            logger.info("Saved %d RIA Russia gold reserve record", saved)
+            return saved
+        except Exception as e:
+            logger.warning("RIA Russia update failed: %s", e)
             return 0
 
     async def get_history(self, country_code: str, months: int = 120) -> list[dict]:
@@ -328,7 +480,7 @@ class GoldReserveService:
                     "source": row.get("source_name", ""),
                     "yoy_change": _to_float(row.get("yoy_change")),
                     "ytd_change": _to_float(row.get("ytd_change")),
-                    "monthly_trend": [_to_float(v) for v in (row.get("monthly_trend") or [])],
+                    "monthly_trend": _to_float(row.get("monthly_trend")),
                     "trend_r2": _to_float(row.get("trend_r2")),
                 }
             )

@@ -88,26 +88,26 @@ class StructuredLogger:
             handler.setFormatter(StructuredFormatter(DEFAULT_FORMAT))
             self.logger.addHandler(handler)
 
-    def _log(self, level: int, message: str, context: LogContext | None = None, **kwargs):
+    def _log(self, level: int, message: str, *args, context: LogContext | None = None, **kwargs):
         if level < self.logger.level:
             return
         extra = {"context": context} if context else {}
-        self.logger.log(level, message, extra=extra, **kwargs)
+        self.logger.log(level, message, *args, extra=extra, **kwargs)
 
-    def info(self, message: str, context: LogContext | None = None):
-        self._log(logging.INFO, message, context)
+    def info(self, message: str, *args, context: LogContext | None = None):
+        self._log(logging.INFO, message, *args, context=context)
 
-    def warning(self, message: str, context: LogContext | None = None):
-        self._log(logging.WARNING, message, context)
+    def warning(self, message: str, *args, context: LogContext | None = None):
+        self._log(logging.WARNING, message, *args, context=context)
 
-    def error(self, message: str, context: LogContext | None = None):
-        self._log(logging.ERROR, message, context)
+    def error(self, message: str, *args, context: LogContext | None = None):
+        self._log(logging.ERROR, message, *args, context=context)
 
-    def debug(self, message: str, context: LogContext | None = None):
-        self._log(logging.DEBUG, message, context)
+    def debug(self, message: str, *args, context: LogContext | None = None):
+        self._log(logging.DEBUG, message, *args, context=context)
 
-    def exception(self, message: str, context: LogContext | None = None):
-        self._log(logging.ERROR, message, context)
+    def exception(self, message: str, *args, context: LogContext | None = None):
+        self._log(logging.ERROR, message, *args, context=context)
 
     @contextmanager
     def timed(self, operation: str, **context_kwargs):

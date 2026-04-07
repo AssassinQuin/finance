@@ -1,26 +1,21 @@
 """
 World Gold Council (WGC) Supply/Demand Data Scraper.
 
-Data source: https://www.gold.org/goldhub/data/demand-and-supply
-Quarterly gold supply and demand statistics.
+Data source: https://www.gold.org/goldhub/research/gold-demand-trends/
+Parses HTML tables from WGC Gold Demand Trends quarterly reports.
 
-Excel Structure (GDT_Tables_Q425_CN.xlsx):
-- Sheet "黄金供需" contains supply/demand data
-- Row 5: Year/Quarter headers
-- Rows 6-28: Data rows with labels in column B
-- Columns 3-18: Annual data (2010-2025)
-- Columns 24+: Quarterly data (2010 Q1 onwards)
+Report pages contain a standard supply/demand table with:
+- Annual columns (current year, previous year)
+- Quarterly columns (Q4 current, Q4 previous)
+- Rows: Mine Production, Net Hedging, Recycling, Jewelry, Technology, Investment, Central Banks, etc.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 
-from openpyxl import load_workbook
-from openpyxl.worksheet.worksheet import Worksheet
+from bs4 import BeautifulSoup
 
 from ...core.models.gold_supply_demand import GoldSupplyDemand
 from ...infra.http_client import HttpClient
@@ -29,334 +24,232 @@ from ...utils.time_util import utcnow
 
 logger = get_logger("fcli.scraper.wgc")
 
+REPORT_URLS = [
+    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-2025",
+    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-and-q3-2025",
+    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-and-q2-2025",
+    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-and-q1-2025",
+    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-2024",
+]
 
-# Excel Row Mapping (Row number -> Field name)
-# Based on WGC Gold Demand Trends Excel format
-ROW_MAPPING: dict[int, str] = {
-    6: "total_supply",  # 总供应量
-    7: "mine_production",  # 金矿产量
-    8: "net_hedging",  # 生产商净套保
-    10: "recycling",  # 回收金
-    11: "total_demand",  # 总需求量
-    12: "jewelry",  # 金饰制造
-    15: "technology",  # 科技
-    19: "total_investment",  # 投资
-    20: "bars_coins",  # 金条和金币总需求量
-    24: "etfs",  # 黄金ETF及类似产品
-    25: "central_banks",  # 各央行和官方机构
-    27: "otc_investment",  # 场外投资及其他
-    28: "price_avg_usd",  # LBMA黄金价格
+ROW_LABEL_MAP: dict[str, str] = {
+    "Mine Production": "mine_production",
+    "Net Producer Hedging": "net_hedging",
+    "Total Mine Supply": "total_mine_supply",
+    "Recycled Gold": "recycling",
+    "Total Supply": "total_supply",
+    "Jewellery Fabrication": "jewelry",
+    "Technology": "technology",
+    "Total Bar and Coin": "bars_coins",
+    "ETFs & Similar Products": "etfs",
+    "Central Banks & Other inst.": "central_banks",
+    "Gold Demand": "total_demand",
+    "OTC and Other": "otc_investment",
+    "Total Demand": "total_demand_check",
+    "LBMA Gold Price (US$/oz)": "price_avg_usd",
+    "Investment": "total_investment",
 }
 
 
 class WGCScraper:
-    """WGC Gold Supply/Demand Data Scraper with URL discovery."""
-
-    # Base URL pattern for WGC Excel files
-    # Pattern observed: https://www.gold.org/sites/default/files/{YYYY}-{MM}/GDT_Tables_Q{Q}{YY}_CN.xlsx
-    BASE_URL_TEMPLATE = (
-        "https://www.gold.org/sites/default/files/{year}-{month:02d}/GDT_Tables_Q{quarter}{short_year}_CN.xlsx"
-    )
-
-    # Fallback URL pattern (alternative format)
-    ALT_URL_TEMPLATE = "https://www.gold.org/sites/default/files/{year}-{month:02d}/GDT_Tables_Q{quarter}{year}_CN.xlsx"
-
-    # Maximum number of quarters to try when discovering
-    MAX_QUARTERS_TO_TRY = 12
+    """WGC Gold Supply/Demand Data Scraper - HTML report parsing."""
 
     def __init__(self, http_client: HttpClient):
         self._http_client = http_client
-        self._last_successful_url: str | None = None
 
     async def close(self):
         pass
 
-    def _build_url(self, year: int, quarter: int) -> str:
-        """
-        Build download URL for a given quarter.
+    async def fetch_latest(self) -> list[GoldSupplyDemand]:
+        for url in REPORT_URLS:
+            html = await self._http_client.fetch(url, text_mode=True)
+            if not html or len(html) < 5000:
+                logger.debug("No valid HTML from %s", url)
+                continue
+            logger.info("Downloaded WGC report page: %d chars from %s", len(html), url)
+            results = self.parse_html(html)
+            if results:
+                return results
+        logger.warning("No valid WGC data found from any report URL")
+        return []
 
-        WGC typically releases Q1 data in late April, Q2 in late July,
-        Q3 in late October, and Q4 in late January of the following year.
+    def parse_html(self, html: str) -> list[GoldSupplyDemand]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
+        if not table:
+            logger.warning("No <table> found in WGC report page")
+            return []
 
-        Args:
-            year: Year (e.g., 2024)
-            quarter: Quarter (1-4)
+        headers = self._parse_headers(table)
+        if not headers:
+            logger.warning("No column headers parsed from WGC table")
+            return []
 
-        Returns:
-            URL string for the Excel file
-        """
-        # Calculate expected release month for each quarter
-        # Q1: released ~April, Q2: ~July, Q3: ~October, Q4: ~January (next year)
-        release_months = {1: 4, 2: 7, 3: 10, 4: 11}  # Q4 often released in Nov/Dec
+        rows = self._parse_rows(table)
+        if not rows:
+            logger.warning("No data rows parsed from WGC table")
+            return []
 
-        month = release_months.get(quarter, 4)
-        short_year = year % 100
+        return self._build_records(headers, rows)
 
-        return self.BASE_URL_TEMPLATE.format(
-            year=year,
-            month=month,
-            quarter=quarter,
-            short_year=short_year,
-        )
+    def _parse_headers(self, table) -> list[dict]:
+        header_row = table.find("tr")
+        if not header_row:
+            return []
+        cells = header_row.find_all(["th", "td"])
+        headers = []
+        for cell in cells:
+            text = cell.get_text(strip=True)
+            headers.append({"text": text})
+        return headers
 
-    def _build_alternative_url(self, year: int, quarter: int) -> str:
-        """Build alternative URL format (full year in filename)."""
-        release_months = {1: 4, 2: 7, 3: 10, 4: 11}
-        month = release_months.get(quarter, 4)
+    def _parse_rows(self, table) -> dict[str, dict[str, float]]:
+        rows: dict[str, dict[str, float]] = {}
+        for tr in table.find_all("tr"):
+            cells = tr.find_all(["td", "th"])
+            if len(cells) < 2:
+                continue
+            label = cells[0].get_text(strip=True)
+            field_name = self._match_label(label)
+            if not field_name:
+                continue
+            values: dict[str, float] = {}
+            for i, cell in enumerate(cells[1:], start=1):
+                raw = cell.get_text(strip=True).replace(",", "").replace(" ", "")
+                val = self._parse_number(raw)
+                if val is not None:
+                    values[str(i)] = val
+            rows[field_name] = values
+        return rows
 
-        return self.ALT_URL_TEMPLATE.format(
-            year=year,
-            month=month,
-            quarter=quarter,
-        )
-
-    def _recent_quarters(self, max_quarters: int = 12) -> list[tuple[int, int]]:
-        """
-        Generate recent (year, quarter) pairs in reverse chronological order.
-
-        Args:
-            max_quarters: Maximum number of quarters to generate
-
-        Returns:
-            List of (year, quarter) tuples, most recent first
-        """
-        now = datetime.now()
-        current_year = now.year
-        current_quarter = (now.month - 1) // 3 + 1
-
-        quarters = []
-        year, quarter = current_year, current_quarter
-
-        for _ in range(max_quarters):
-            quarters.append((year, quarter))
-            quarter -= 1
-            if quarter < 1:
-                quarter = 4
-                year -= 1
-
-        return quarters
-
-    async def _download_and_parse(self, url: str, year: int, quarter: int) -> list[GoldSupplyDemand] | None:
-        """
-        Download and parse Excel file from URL.
-
-        Args:
-            url: URL to download from
-            year: Expected year (for logging)
-            quarter: Expected quarter (for logging)
-
-        Returns:
-            List of GoldSupplyDemand records or None if failed
-        """
-        try:
-            content = await self._http_client.get_binary(url)
-            if content is None or len(content) < 1000:
-                logger.debug(f"Invalid content from {url}")
-                return None
-
-            logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
-            self._last_successful_url = url
-
-            return self.parse_excel(content)
-
-        except Exception as e:
-            logger.debug(f"Failed to download/parse {url}: {e}")
-            return None
-
-    async def download_excel(self, year: int, quarter: int) -> bytes | None:
-        """
-        Download WGC Excel file for a specific quarter.
-
-        Args:
-            year: Year (e.g., 2024)
-            quarter: Quarter (1-4)
-
-        Returns:
-            Excel file bytes or None if not available
-        """
-        # Try primary URL pattern
-        url = self._build_url(year, quarter)
-        content = await self._http_client.get_binary(url)
-        if content and len(content) > 1000:
-            logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
-            return content
-
-        alt_url = self._build_alternative_url(year, quarter)
-        content = await self._http_client.get_binary(alt_url)
-        if content and len(content) > 1000:
-            logger.info(f"Downloaded WGC Excel for {year} Q{quarter}: {len(content)} bytes")
-            return content
-
-        logger.debug(f"No valid Excel file found for {year} Q{quarter}")
+    def _match_label(self, label: str) -> str | None:
+        clean = re.sub(r"\s+", " ", label).strip()
+        for pattern, field in ROW_LABEL_MAP.items():
+            if pattern.lower() in clean.lower():
+                return field
         return None
 
-    def parse_excel(self, excel_path: str | Path | bytes) -> list[GoldSupplyDemand]:
-        """
-        Parse WGC Excel file and extract quarterly supply/demand data.
+    @staticmethod
+    def _parse_number(text: str) -> float | None:
+        text = text.strip()
+        if not text or text in ("-", "–", "—", "N/A", "n/a"):
+            return None
+        match = re.match(r"[-+]?\d+\.?\d*", text)
+        if match:
+            try:
+                return float(match.group())
+            except ValueError:
+                return None
+        return None
 
-        Args:
-            excel_path: Path to Excel file or bytes content
-
-        Returns:
-            List of GoldSupplyDemand records
-        """
-        try:
-            if isinstance(excel_path, bytes):
-                workbook = load_workbook(BytesIO(excel_path), data_only=True)
-            else:
-                workbook = load_workbook(Path(excel_path), data_only=True)
-        except Exception as e:
-            logger.error(f"Failed to load Excel: {e}")
+    def _build_records(self, headers: list[dict], rows: dict[str, dict[str, float]]) -> list[GoldSupplyDemand]:
+        if not headers or not rows:
             return []
 
-        # Find the sheet with supply/demand data
-        ws = None
-        for sheet in workbook.worksheets:
-            if sheet.title == "黄金供需":
-                ws = sheet
-                break
-
-        if ws is None:
-            logger.warning("Sheet '黄金供需' not found, trying first sheet")
-            ws = workbook.active
-
-        if ws is None:
-            logger.error("No worksheet found in Excel file")
+        col_meta = self._identify_columns(headers)
+        if not col_meta:
+            logger.warning("Could not identify year/quarter columns from headers")
+            logger.debug("Headers: %s", [h.get("text") for h in headers])
             return []
-
-        # Validate expected rows exist
-        self._validate_sheet_structure(ws)
 
         results: list[GoldSupplyDemand] = []
-
-        # Find quarterly data columns (typically columns 24+)
-        for col_idx in range(24, ws.max_column + 1):
-            data = self._extract_quarter_data(ws, col_idx)
-            if data:
-                results.append(data)
-
-        # Also try earlier columns in case structure changed
-        if not results:
-            for col_idx in range(3, ws.max_column + 1):
-                data = self._extract_quarter_data(ws, col_idx)
-                if data:
-                    results.append(data)
-
+        for col_idx, meta in col_meta.items():
+            record = self._extract_record(rows, col_idx, meta)
+            if record:
+                results.append(record)
         return results
 
-    def _validate_sheet_structure(self, ws: Worksheet) -> None:
-        """Validate that expected rows exist in the worksheet."""
-        expected_labels = {
-            6: "总供应量",
-            11: "总需求量",
-        }
+    def _identify_columns(self, headers: list[dict]) -> dict[int, dict]:
+        result: dict[int, dict] = {}
+        # First header cell is the row label column; data columns start from index 1.
+        for col_idx, h in enumerate(headers[1:], start=1):
+            text = h.get("text", "")
+            parsed = self._parse_header_text(text)
+            if parsed:
+                result[col_idx] = parsed
+        return result
 
-        for row_idx, expected_label in expected_labels.items():
-            cell_value = ws.cell(row=row_idx, column=2).value
-            if cell_value is None or expected_label not in str(cell_value):
-                logger.warning(f"Expected '{expected_label}' at row {row_idx}, got '{cell_value}'")
-
-    def _extract_quarter_data(self, ws: Worksheet, col_idx: int) -> GoldSupplyDemand | None:
-        """Extract data for a specific quarter from a column."""
-        # Check if column has a year/quarter header (e.g., "2024 Q1")
-        cell_value = ws.cell(row=5, column=col_idx).value
-        if cell_value is None:
+    @staticmethod
+    def _parse_header_text(text: str) -> dict | None:
+        text = text.strip()
+        if not text:
             return None
 
-        # Parse quarter from cell value like "2024 Q1"
-        header_str = str(cell_value).strip()
-
-        # Try to parse "YYYY QN" format
-        match = re.match(r"(\d{4})\s*Q(\d)", header_str, re.IGNORECASE)
-        if not match:
+        # Skip non-data columns such as y/y percentage columns.
+        if "y/y" in text.lower():
             return None
 
-        try:
-            year = int(match.group(1))
-            quarter = int(match.group(2))
-        except (ValueError, TypeError):
+        year: int | None = None
+        quarter = None
+
+        m = re.match(r"^(\d{4})$", text)
+        if m:
+            year = int(m.group(1))
+            return {"year": year, "quarter": None, "type": "annual"}
+
+        # Header formats seen on WGC pages:
+        # - Q4'24 / Q4’24
+        # - Q4 2024
+        short_q = re.search(r"Q([1-4])\s*['’]\s*(\d{2})", text, re.IGNORECASE)
+        if short_q:
+            quarter = int(short_q.group(1))
+            year = 2000 + int(short_q.group(2))
+            return {"year": year, "quarter": quarter, "type": "quarterly"}
+
+        long_q = re.search(r"Q([1-4])\s*(\d{4})", text, re.IGNORECASE)
+        if long_q:
+            quarter = int(long_q.group(1))
+            year = int(long_q.group(2))
+            return {"year": year, "quarter": quarter, "type": "quarterly"}
+
+        if year:
+            return {"year": year, "quarter": quarter, "type": "quarterly" if quarter else "annual"}
+
+        return None
+
+    def _extract_record(self, rows: dict[str, dict[str, float]], col_idx: int, meta: dict) -> GoldSupplyDemand | None:
+        def get_val(field: str) -> float | None:
+            vals = rows.get(field, {})
+            return vals.get(str(col_idx))
+
+        total_supply = get_val("total_supply")
+        if total_supply is None or total_supply == 0:
             return None
 
-        # Validate quarter
-        if quarter < 1 or quarter > 4:
-            return None
+        total_demand = get_val("total_demand") or get_val("total_demand_check") or 0
+        total_investment = get_val("total_investment") or 0
+        if total_investment == 0:
+            bars = get_val("bars_coins") or 0
+            etfs = get_val("etfs") or 0
+            cb = get_val("central_banks") or 0
+            otc = get_val("otc_investment") or 0
+            total_investment = bars + etfs + cb + otc
 
-        # Read all values from the column
-        values: dict[str, float] = {}
-
-        for row_idx, field_name in ROW_MAPPING.items():
-            cell_value = ws.cell(row=row_idx, column=col_idx).value
-            if cell_value is not None:
-                try:
-                    values[field_name] = float(cell_value)
-                except (ValueError, TypeError):
-                    pass
-
-        # Skip if no meaningful data
-        if not values or values.get("total_supply", 0) == 0:
-            return None
-
-        # Calculate balance
-        balance = values.get("total_supply", 0) - values.get("total_demand", 0)
+        balance = total_supply - total_demand
+        quarter = meta.get("quarter") or 0
 
         return GoldSupplyDemand(
-            year=year,
+            year=meta["year"],
             quarter=quarter,
-            period=f"{year} Q{quarter}",
-            mine_production=values.get("mine_production", 0),
-            recycling=values.get("recycling", 0),
-            net_hedging=values.get("net_hedging", 0),
-            total_supply=values.get("total_supply", 0),
-            jewelry=values.get("jewelry", 0),
-            technology=values.get("technology", 0),
-            total_investment=values.get("total_investment", 0),
-            bars_coins=values.get("bars_coins", 0),
-            etfs=values.get("etfs", 0),
-            otc_investment=values.get("otc_investment", 0),
-            central_banks=values.get("central_banks", 0),
-            total_demand=values.get("total_demand", 0),
+            period=f"{meta['year']}" + (f" Q{quarter}" if quarter else ""),
+            mine_production=get_val("mine_production") or 0,
+            recycling=get_val("recycling") or 0,
+            net_hedging=get_val("net_hedging") or 0,
+            total_supply=total_supply,
+            jewelry=get_val("jewelry") or 0,
+            technology=get_val("technology") or 0,
+            total_investment=total_investment,
+            bars_coins=get_val("bars_coins") or 0,
+            etfs=get_val("etfs") or 0,
+            otc_investment=get_val("otc_investment") or 0,
+            central_banks=get_val("central_banks") or 0,
+            total_demand=total_demand,
             supply_demand_balance=balance,
-            price_avg_usd=values.get("price_avg_usd"),
+            price_avg_usd=get_val("price_avg_usd"),
             data_source="WGC",
             fetch_time=utcnow(),
         )
 
-    async def fetch_latest(self) -> list[GoldSupplyDemand]:
-        """
-        Fetch latest available quarterly data using URL discovery.
-
-        Tries recent quarters in reverse chronological order until
-        a valid Excel file is found.
-
-        Returns:
-            List of GoldSupplyDemand records
-        """
-        quarters = self._recent_quarters(self.MAX_QUARTERS_TO_TRY)
-
-        for year, quarter in quarters:
-            # Try primary URL pattern
-            url = self._build_url(year, quarter)
-            data = await self._download_and_parse(url, year, quarter)
-            if data:
-                return data
-
-            # Try alternative URL pattern
-            alt_url = self._build_alternative_url(year, quarter)
-            data = await self._download_and_parse(alt_url, year, quarter)
-            if data:
-                return data
-
-        logger.warning("No valid WGC Excel file found in recent quarters")
-        return []
-
     def fetch_from_local(self, file_path: str | Path) -> list[GoldSupplyDemand]:
-        """
-        Parse a local WGC Excel file.
-
-        Args:
-            file_path: Path to the Excel file
-
-        Returns:
-            List of GoldSupplyDemand records
-        """
-        return self.parse_excel(file_path)
+        content = Path(file_path).read_text(encoding="utf-8")
+        return self.parse_html(content)
