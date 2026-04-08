@@ -4,6 +4,8 @@
 
 FCLI is a command-line financial data tool built with Python, async/await patterns, and PostgreSQL with flat table architecture (V3).
 
+**Version**: v0.2.0
+
 ## Architecture
 
 ### Database Schema (V3)
@@ -48,6 +50,25 @@ ORDER BY rate_time DESC LIMIT 1;
 - PostgreSQL TIMESTAMP fields use `datetime` objects
 - NOT Unix timestamps
 - Use `datetime.now(timezone.utc)` for current time
+
+### Code Mapping
+
+The `code_mapper` module (`fcli/core/code_mapper.py`) provides unified code conversion:
+
+```python
+from fcli.core.code_mapper import code_mapper
+
+# Convert code to API-specific format
+secid = code_mapper.to_eastmoney_secid(code, market)
+
+# Infer market from code
+market = code_mapper.infer_market(code)
+
+# Infer asset type from code
+asset_type = code_mapper.infer_type(code)
+```
+
+All code↔api_code/secid conversions are handled in one place, avoiding scattered mapping logic.
 
 ## CLI Commands
 
@@ -102,6 +123,10 @@ python run.py gold -h           # Show help
 python run.py gold supply
 ```
 
+**Available Gold Reserves Sources:**
+- `WGCScraper` - World Gold Council (primary)
+- `RIAScraper` - Russian Central Bank (RIA Novosti)
+
 ### GPR Commands
 
 ```bash
@@ -115,6 +140,16 @@ python run.py gpr -h              # Show help
 python run.py gpr history -m 60   # 60 months
 ```
 
+**GPR Service** provides multi-country comparison and risk analysis:
+
+```python
+from fcli.services.gpr_service import GPRService
+
+service = GPRService()
+analysis = await service.get_gpr_analysis(country_code="WLD")
+comparison = await service.get_multi_country_comparison(["WLD", "CHN", "RUS"])
+```
+
 ### FX Commands
 
 ```bash
@@ -126,6 +161,10 @@ python run.py fx -h              # Show help
 python run.py fx USD CNY         # USD/CNY rate
 python run.py fx EUR             # EUR rates
 ```
+
+**Available Forex Sources:**
+- `ExchangeRateSource` - ExchangeRate API (primary)
+- `FrankfurterSource` - Frankfurter API (fallback)
 
 ### Market Commands
 
@@ -266,6 +305,7 @@ fcli/
 │   ├── database.py      # PostgreSQL pool (auto-lazy-init)
 │   ├── exceptions.py    # Custom exceptions
 │   ├── factories.py     # Factory functions
+│   ├── code_mapper.py   # Unified code mapping (code↔api_code/secid conversions)
 │   ├── storage.py       # HybridStorage (JSON local)
 │   ├── interfaces/      # Interface definitions (Protocol + ABC)
 │   │   ├── cache.py     # CacheABC
@@ -297,15 +337,19 @@ fcli/
 │   ├── gpr_service.py         # GPR service
 │   ├── fund_service.py        # Fund service
 │   ├── watchlist_service.py   # Watchlist service (batch ops)
-│   └── scrapers/        # Data scrapers
+│   ├── scrapers/        # Data scrapers
 │       ├── base.py            # BaseScraper[T], ScraperResult[T]
 │       ├── akshare_scraper.py # A-stock (Akshare)
 │       ├── fund_scraper.py    # Fund data (Akshare)
 │       ├── fund_quote_source.py # Fund quote source
 │       ├── sina_quote_source.py # Sina quote source
++ │       ├── eastmoney_quote_source.py # Eastmoney quote source
 │       ├── gpr_scraper.py     # GPR data
 │       ├── imf_scraper.py     # IMF data
 │       ├── wgc_scraper.py     # WGC gold reserves
++ │       ├── ria_scraper.py     # RIA (Russian Central Bank) gold reserves
++ │       ├── exchangerate_source.py # ExchangeRate API forex source
++ │       ├── frankfurter_source.py # Frankfurter API forex source
 │       └── safe_scraper.py    # Safe scraper wrapper
 ├── infra/
 │   └── http_client.py   # HTTP client wrapper (aiohttp)

@@ -1,5 +1,7 @@
 """Quote store - flat table implementation."""
 
+from datetime import datetime
+
 from ...core.database import Database
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
@@ -26,7 +28,7 @@ class QuoteStore:
             volume = EXCLUDED.volume
     """
 
-    def _quote_to_args(self, quote: Quote, now, source: str = SOURCE_AKSHARE) -> tuple:
+    def _quote_to_args(self, quote: Quote, now: datetime, source: str = SOURCE_AKSHARE) -> tuple:
         asset_type = "fund" if quote.type == AssetType.FUND else "stock"
         return (
             quote.code,

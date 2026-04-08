@@ -1,15 +1,18 @@
-# FCLI - 命令行金融行情工具
+﻿# FCLI - 命令行金融行情工具
 
 FCLI 是一个基于 Python 的轻量级命令行金融工具，支持 A股、港股、美股、公募基金、汇率及黄金储备等数据的实时查询。
+
+**版本**: v0.2.0
 
 ## 核心特性
 
 - **智能黄金追踪**: 跟踪全球前20大央行黄金储备，显示 1月/3月/6月/12月变化趋势
-- **多数据源支持**: Akshare (A股/基金)、IMF、各国央行等数据源
+- **多数据源支持**: Akshare (A股/基金)、东方财富、ExchangeRate API、Frankfurter API、IMF、WGC、RIA (俄罗斯央行)等数据源
+- **统一代码映射**: 通过 `code_mapper` 模块统一处理不同市场的代码转换逻辑
 - **高性能并发**: 基于 `asyncio` 异步抓取，支持并发请求
 - **混合缓存**: PostgreSQL UNLOGGED 表 + 文件缓存降级，支持动态 TTL
 - **灵活存储**: PostgreSQL 可选，无数据库时自动降级到本地 JSON
-- **模块化架构**: 清晰的分层设计，易于维护和扩展
+- **模块化架构**: 清晰的分层设计，DI 容器模式，易于维护和扩展
 
 ## 快速开始
 
@@ -162,8 +165,10 @@ fcli
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Data Source Layer (fcli/services/scrapers/)                            │
 │  BaseScraper[T] → AkshareScraper | IMFScraper | WGCScraper |           │
-│  GprScraper | FundScraper | SafeScraper                                │
-│  QuoteSourceABC → SinaQuoteSource | FundQuoteSource                     │
+│  GprScraper | FundScraper | RIAScraper | SafeScraper                    │
+│  QuoteSourceABC → SinaQuoteSource | EastmoneyQuoteSource |              │
+│                   FundQuoteSource                                        │
+│  ForexSourceABC → ExchangeRateSource | FrankfurterSource                │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -200,6 +205,7 @@ fcli/
 │   ├── database.py      # PostgreSQL 连接池 (auto-lazy-init)
 │   ├── exceptions.py    # 自定义异常
 │   ├── factories.py     # 工厂函数
+│   ├── code_mapper.py   # 统一代码映射 (统一处理 code↔api_code/secid 转换)
 │   ├── storage.py       # JSON 本地存储 (HybridStorage)
 │   ├── interfaces/      # 接口定义 (Protocol + ABC)
 │   │   ├── cache.py     # CacheABC
@@ -237,9 +243,13 @@ fcli/
 │       ├── fund_scraper.py    # 基金数据 (Akshare)
 │       ├── fund_quote_source.py # 基金行情源
 │       ├── sina_quote_source.py # 新浪行情源
+│       ├── eastmoney_quote_source.py # 东方财富行情源
 │       ├── gpr_scraper.py     # GPR 数据
 │       ├── imf_scraper.py     # IMF 数据
 │       ├── wgc_scraper.py     # WGC 黄金储备
+│       ├── ria_scraper.py     # RIA 俄罗斯央行黄金储备
+│       ├── exchangerate_source.py # ExchangeRate API 汇率源
+│       ├── frankfurter_source.py # Frankfurter API 汇率源
 │       └── safe_scraper.py    # 通用安全抓取器
 ├── infra/
 │   └── http_client.py   # HTTP 客户端封装 (aiohttp)
@@ -303,16 +313,18 @@ python -m fcli.scripts.migrate migrate
 
 ## 技术栈
 
-| 类别        | 技术                             |
-| ----------- | -------------------------------- |
-| CLI 框架    | Typer + Rich                     |
-| 异步运行时  | asyncio                          |
-| HTTP 客户端 | aiohttp                          |
-| 数据库      | PostgreSQL (asyncpg)             |
-| 缓存        | PostgreSQL UNLOGGED Table + File |
-| 数据抓取    | Akshare, BeautifulSoup           |
-| 类型检查    | mypy (strict mode)               |
-| 代码规范    | Ruff                             |
+| 类别        | 技术                                           |
+| ----------- | ---------------------------------------------- |
+| CLI 框架    | Typer + Rich                                   |
+| 异步运行时  | asyncio                                        |
+| HTTP 客户端 | aiohttp                                        |
+| 数据库      | PostgreSQL (asyncpg)                           |
+| 缓存        | PostgreSQL UNLOGGED Table + File               |
+| 数据抓取    | Akshare, BeautifulSoup                         |
+| 数据验证    | Pydantic v2                                    |
+| 代码映射    | 统一 code_mapper 模块                           |
+| 类型检查    | mypy (strict mode)                             |
+| 代码规范    | Ruff                                           |
 
 ## 开发
 
