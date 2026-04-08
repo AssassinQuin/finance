@@ -6,6 +6,7 @@
 - 通过 sources 注入数据源，实现策略模式
 """
 
+import asyncio
 from datetime import datetime
 
 from ..core.cache_strategy import CacheStrategyBase
@@ -134,8 +135,6 @@ class QuoteService:
 
     async def fetch_all(self, assets: list[Asset]) -> list[Quote]:
         """批量获取行情数据，使用批量API优化性能"""
-        import asyncio
-
         quotes = []
         remaining_assets = []
 
@@ -232,13 +231,13 @@ class QuoteService:
         if not secids:
             return []
 
-        # 使用配置化的URL
-        url = self._config.datasource.eastmoney.batch_quote_url
+        em = self._config.datasource.eastmoney
+        url = em.batch_quote_url
         params = {
             "fltt": 2,
             "invt": 2,
             "secids": ",".join(secids),
-            "fields": "f1,f2,f3,f4,f12,f14,f15,f16,f17,f18,f43,f47,f48",
+            "fields": em.BATCH_FIELDS,
         }
 
         data = await self._http_client.fetch(url, params=params)
@@ -252,30 +251,31 @@ class QuoteService:
         }
 
         for item in data["data"].get("diff", []):
-            code = item.get("f12")
+            code = item.get(em.F_BATCH_CODE)
             if not code or code not in asset_map:
                 continue
 
             asset = asset_map[code]
-            price = float(item.get("f2", 0)) if item.get("f2") else 0.0
-            change_percent = float(item.get("f3", 0)) if item.get("f3") else 0.0
+            price = float(item.get(em.F_BATCH_PRICE, 0)) if item.get(em.F_BATCH_PRICE) else 0.0
+            change_percent = float(item.get(em.F_BATCH_CHANGE, 0)) if item.get(em.F_BATCH_CHANGE) else 0.0
 
             quotes.append(
                 Quote(
                     code=asset.code,
-                    name=item.get("f14", asset.name),
+                    name=item.get(em.F_BATCH_NAME, asset.name),
                     price=price,
                     change_percent=change_percent,
                     update_time=utcnow(),
                     market=asset.market,
                     type=asset.type,
-                    high=float(item.get("f17", 0)) if item.get("f17") else None,
-                    low=float(item.get("f18", 0)) if item.get("f18") else None,
-                    volume=float(item.get("f47", 0)) if item.get("f47") and item.get("f47") != "-" else None,
+                    high=float(item.get(em.F_BATCH_HIGH, 0)) if item.get(em.F_BATCH_HIGH) else None,
+                    low=float(item.get(em.F_BATCH_LOW, 0)) if item.get(em.F_BATCH_LOW) else None,
+                    volume=float(item.get(em.F_BATCH_VOLUME, 0))
+                    if item.get(em.F_BATCH_VOLUME) and item.get(em.F_BATCH_VOLUME) != "-"
+                    else None,
                 )
             )
 
-            # 使用基于资产类型的缓存策略
             ttl = self._cache_strategy.get_ttl(asset.type, asset.market)
             cache_key = f"quote:{asset.code}"
             await self._cache.async_set(cache_key, self._quote_to_dict(quotes[-1]), ttl)

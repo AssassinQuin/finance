@@ -2,7 +2,7 @@
 GPR (地缘政治风险指数) 服务模块
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
 
@@ -12,6 +12,7 @@ from ..core.database import Database
 from ..core.models import GPRHistory
 from ..core.stores.gpr import gpr_history_store
 from ..utils.logger import get_logger
+from ..utils.time_util import utcnow
 from .scrapers.gpr_scraper import GPRScraper
 
 logger = get_logger("fcli.gpr")
@@ -33,15 +34,16 @@ class GPRService:
         await gpr_history_store.ensure_schema()
 
         last_update = await gpr_history_store.get_last_update_time()
-        now = datetime.now(timezone.utc)
+        now = utcnow()
+        stale_days = self._config.datasource.gpr.stale_days
 
         if last_update is not None:
-            if last_update.tzinfo is None:
-                last_update = last_update.replace(tzinfo=timezone.utc)
-            if now - last_update < timedelta(days=7):
+            if last_update.tzinfo is not None:
+                last_update = last_update.replace(tzinfo=None)
+            if now - last_update < timedelta(days=stale_days):
                 return
 
-        logger.info("GPR data cache expired (7 days), triggering auto-update...")
+        logger.info("GPR data cache expired (%s days), triggering auto-update...", stale_days)
         result = await self.update_data(full=True)
         if result.get("success"):
             logger.info(f"Auto-updated GPR data: {result.get('records', 0)} records")
@@ -157,13 +159,16 @@ class GPRService:
 
         risk_level = "正常 (Normal)"
         risk_color = "white"
-        if latest_val > 250:
+        moderate_threshold = self._config.datasource.gpr.risk_moderate_threshold
+        high_threshold = self._config.datasource.gpr.risk_high_threshold
+        extreme_threshold = self._config.datasource.gpr.risk_extreme_threshold
+        if latest_val > extreme_threshold:
             risk_level = "极高 (Extreme)"
             risk_color = "bold red"
-        elif latest_val > 150:
+        elif latest_val > high_threshold:
             risk_level = "高风险 (Elevated)"
             risk_color = "red"
-        elif latest_val > 100:
+        elif latest_val > moderate_threshold:
             risk_level = "中等 (Moderate)"
             risk_color = "yellow"
 

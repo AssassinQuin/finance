@@ -1,9 +1,13 @@
 import re
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 from fcli.core.config import config
 from fcli.core.models.base import Market
+
+MONTH_FORMAT = "%Y-%m"
+DATE_FORMAT = "%Y-%m-%d"
+DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 
 MARKET_TIMEZONES: dict[Market, ZoneInfo] = {
     Market.CN: ZoneInfo("Asia/Shanghai"),
@@ -14,7 +18,7 @@ MARKET_TIMEZONES: dict[Market, ZoneInfo] = {
 
 
 def utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def now_for_market(market: Market) -> datetime:
@@ -41,7 +45,7 @@ def normalize_time(time_str: str) -> str:
 
     match = re.match(r"^(\d{2}:\d{2})(?::\d{2})?$", time_str)
     if match:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now().strftime(DATE_FORMAT)
         return f"{today} {match.group(1)}"
 
     return time_str

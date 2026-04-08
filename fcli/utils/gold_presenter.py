@@ -4,6 +4,7 @@ from rich.columns import Columns
 from rich.panel import Panel
 from rich.table import Table
 
+from ..core.config import config
 from ..core.models.gpr import GPR_COUNTRY_NAMES, GPRIndexType
 from .base_presenter import BasePresenter, console
 
@@ -314,9 +315,9 @@ class GoldPresenter(BasePresenter):
 
         for i, item in enumerate(comparison, 1):
             val = item["gpr_index"]
-            if val > 150:
+            if val > config.datasource.gpr.risk_high_threshold:
                 risk_text = "[bold red]高风险[/bold red]"
-            elif val > 100:
+            elif val > config.datasource.gpr.risk_moderate_threshold:
                 risk_text = "[yellow]中等[/yellow]"
             else:
                 risk_text = "[green]正常[/green]"

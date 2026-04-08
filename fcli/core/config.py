@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -87,6 +88,9 @@ class CacheSettings(BaseSettings):
     quote_medium_ttl: int = Field(default=600)
     quote_long_ttl: int = Field(default=3600)
     quote_history_days: int = Field(default=30)
+    key_prefix: str = Field(default="fcli:")
+    pg_cleanup_interval: int = Field(default=300)
+    pg_health_check_interval: int = Field(default=60)
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_PATH,
@@ -103,6 +107,11 @@ class HttpSettings(BaseSettings):
     max_retries: int = Field(default=3)
     retry_delay: float = Field(default=1.0)
     max_concurrent: int = Field(default=10)
+    max_connections: int = Field(default=100)
+    max_per_host: int = Field(default=10)
+    user_agent: str = Field(
+        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_PATH,
@@ -199,6 +208,8 @@ class SinaDataSource(BaseSettings):
     hk_prefix: str = Field(default="rt_hk", description="港股前缀")
     us_prefix: str = Field(default="gb_", description="美股前缀")
 
+    referer: str = Field(default="https://finance.sina.com.cn", description="Sina Referer header")
+
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_PATH,
         env_file_encoding="utf-8",
@@ -222,6 +233,24 @@ class EastmoneyDataSource(BaseSettings):
     hk_market_code: int = Field(default=116, description="港股市场代码")
     us_market_code: int = Field(default=105, description="美股市场代码")
     global_market_code: int = Field(default=100, description="全球市场代码")
+
+    SINGLE_FIELDS: ClassVar[str] = "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107"
+    BATCH_FIELDS: ClassVar[str] = "f1,f2,f3,f4,f12,f14,f15,f16,f17,f18,f43,f47,f48"
+    PRICE_DIVISOR: ClassVar[int] = 100
+
+    F_SINGLE_PRICE: ClassVar[str] = "f43"
+    F_SINGLE_PREV_CLOSE: ClassVar[str] = "f60"
+    F_SINGLE_HIGH: ClassVar[str] = "f44"
+    F_SINGLE_LOW: ClassVar[str] = "f45"
+    F_SINGLE_VOLUME: ClassVar[str] = "f47"
+
+    F_BATCH_CODE: ClassVar[str] = "f12"
+    F_BATCH_NAME: ClassVar[str] = "f14"
+    F_BATCH_PRICE: ClassVar[str] = "f2"
+    F_BATCH_CHANGE: ClassVar[str] = "f3"
+    F_BATCH_HIGH: ClassVar[str] = "f17"
+    F_BATCH_LOW: ClassVar[str] = "f18"
+    F_BATCH_VOLUME: ClassVar[str] = "f47"
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_PATH,
@@ -287,9 +316,13 @@ class GoldDataSource(BaseSettings):
 
     # IMF API
     imf_base_url: str = Field(default="https://dataservices.imf.org/REST/SDMX_JSON.svc", description="IMF API 基础URL")
+    imf_timeout_total: int = Field(default=60, description="IMF 请求总超时(秒)")
+    imf_timeout_connect: int = Field(default=30, description="IMF 连接超时(秒)")
+    imf_batch_concurrency: int = Field(default=5, description="IMF 批量请求并发数")
 
     # 世界黄金协会
     wgc_base_url: str = Field(default="https://www.gold.org", description="世界黄金协会网站")
+    wgc_lookback_years: int = Field(default=3, description="WGC 报告回溯年数")
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_PATH,
@@ -306,6 +339,10 @@ class GPRDataSource(BaseSettings):
     gpr_data_url: str = Field(
         default="https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls", description="GPR 数据文件URL"
     )
+    stale_days: int = Field(default=7, description="GPR 数据过期天数")
+    risk_moderate_threshold: float = Field(default=100.0, description="中等风险阈值")
+    risk_high_threshold: float = Field(default=150.0, description="高风险阈值")
+    risk_extreme_threshold: float = Field(default=250.0, description="极高风险阈值")
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_PATH,

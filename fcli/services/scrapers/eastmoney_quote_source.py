@@ -1,10 +1,13 @@
 """东方财富行情数据源"""
 
+import asyncio
+
 from ...core.code_mapper import code_mapper
 from ...core.config import Settings
 from ...core.interfaces.source import QuoteSourceABC
 from ...core.models import Asset, Quote
 from ...infra.http_client import HttpClient
+from ...utils.calc import calc_change_percent
 from ...utils.time_util import utcnow
 
 
@@ -27,10 +30,11 @@ class EastmoneyQuoteSource(QuoteSourceABC):
         if not secid:
             return None
 
-        url = self._config.datasource.eastmoney.quote_api_url
+        em = self._config.datasource.eastmoney
+        url = em.quote_api_url
         params = {
             "secid": secid,
-            "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f162,f163,f166,f169,f170,f171,f184",
+            "fields": em.SINGLE_FIELDS,
         }
 
         data = await self._http_client.fetch(url, params=params)
@@ -39,30 +43,27 @@ class EastmoneyQuoteSource(QuoteSourceABC):
             return None
 
         d = data["data"]
+        divisor = em.PRICE_DIVISOR
 
-        price = float(d.get("f43", 0)) / 100
-        prev_close = float(d.get("f60", 0)) / 100
-
-        change_percent = 0.0
-        if prev_close > 0:
-            change_percent = (price - prev_close) / prev_close * 100
+        price = float(d.get(em.F_SINGLE_PRICE, 0)) / divisor
+        prev_close = float(d.get(em.F_SINGLE_PREV_CLOSE, 0)) / divisor
 
         return Quote(
             code=asset.code,
             name=asset.name,
             price=price,
-            change_percent=change_percent,
+            change_percent=calc_change_percent(price, prev_close),
             update_time=utcnow(),
             market=asset.market,
             type=asset.type,
-            high=float(d.get("f44", 0)) / 100 if d.get("f44") else None,
-            low=float(d.get("f45", 0)) / 100 if d.get("f45") else None,
-            volume=float(d.get("f47", 0)) if d.get("f47") and d.get("f47") != "-" else None,
+            high=float(d.get(em.F_SINGLE_HIGH, 0)) / divisor if d.get(em.F_SINGLE_HIGH) else None,
+            low=float(d.get(em.F_SINGLE_LOW, 0)) / divisor if d.get(em.F_SINGLE_LOW) else None,
+            volume=float(d.get(em.F_SINGLE_VOLUME, 0))
+            if d.get(em.F_SINGLE_VOLUME) and d.get(em.F_SINGLE_VOLUME) != "-"
+            else None,
         )
 
     async def fetch_all(self, assets: list[Asset]) -> list[Quote]:
-        import asyncio
-
         results = await asyncio.gather(
             *[self.fetch_single(a) for a in assets],
             return_exceptions=True,

@@ -17,20 +17,13 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
+from ...core.config import Settings, config
 from ...core.models.gold_supply_demand import GoldSupplyDemand
 from ...infra.http_client import HttpClient
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 
 logger = get_logger("fcli.scraper.wgc")
-
-REPORT_URLS = [
-    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-2025",
-    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-and-q3-2025",
-    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-and-q2-2025",
-    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-and-q1-2025",
-    "https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-2024",
-]
 
 ROW_LABEL_MAP: dict[str, str] = {
     "Mine Production": "mine_production",
@@ -54,14 +47,16 @@ ROW_LABEL_MAP: dict[str, str] = {
 class WGCScraper:
     """WGC Gold Supply/Demand Data Scraper - HTML report parsing."""
 
-    def __init__(self, http_client: HttpClient):
+    def __init__(self, http_client: HttpClient, settings: Settings | None = None):
         self._http_client = http_client
+        self._config = settings or config
+        self._report_urls = self._build_report_urls()
 
     async def close(self):
         pass
 
     async def fetch_latest(self) -> list[GoldSupplyDemand]:
-        for url in REPORT_URLS:
+        for url in self._report_urls:
             html = await self._http_client.fetch(url, text_mode=True)
             if not html or len(html) < 5000:
                 logger.debug("No valid HTML from %s", url)
@@ -72,6 +67,19 @@ class WGCScraper:
                 return results
         logger.warning("No valid WGC data found from any report URL")
         return []
+
+    def _build_report_urls(self) -> list[str]:
+        current_year = utcnow().year
+        lookback_years = self._config.datasource.gold.wgc_lookback_years
+        urls: list[str] = []
+        for year in range(current_year, current_year - lookback_years, -1):
+            urls.append(f"https://www.gold.org/goldhub/research/gold-demand-trends/gold-demand-trends-full-year-{year}")
+            for quarter in range(4, 0, -1):
+                urls.append(
+                    "https://www.gold.org/goldhub/research/gold-demand-trends/"
+                    f"gold-demand-trends-full-year-and-q{quarter}-{year}"
+                )
+        return urls
 
     def parse_html(self, html: str) -> list[GoldSupplyDemand]:
         soup = BeautifulSoup(html, "html.parser")

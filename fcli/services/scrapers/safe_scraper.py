@@ -6,16 +6,17 @@
 数据获取方式: 从年度页面获取 Excel 文件下载链接，解析 Excel 获取月度数据
 """
 
+import asyncio
 import re
-from datetime import date, datetime
+from datetime import datetime
 from io import BytesIO
 from typing import Any
 
 from ...core.config import Settings
 from ...core.models import GoldReserve
+from ...core.models.base import COUNTRY_CN_CODE, COUNTRY_CN_NAME, SOURCE_SAFE
 from ...infra.http_client import HttpClient
 from ...utils.logger import get_logger
-from ...utils.time_util import utcnow
 from .base import BaseScraper
 
 logger = get_logger("fcli.scraper.safe")
@@ -40,17 +41,18 @@ class SAFEScraper(BaseScraper):
     BASE_URL = "https://www.safe.gov.cn"
     INDEX_URL = "https://www.safe.gov.cn/safe/whcb/index.html"
 
-    YEAR_URLS = {
-        2026: "https://www.safe.gov.cn/safe/2026/0205/27113.html",
-        2025: "https://www.safe.gov.cn/safe/2025/0206/25745.html",
+    FALLBACK_YEAR_URLS = {
         2020: "https://www.safe.gov.cn/safe/2020/0207/26908.html",
     }
+    FETCH_DELAY_SECONDS = 0.5
+    DISCOVERY_DELAY_SECONDS = 0.3
 
     def __init__(self, http_client: HttpClient, settings: Settings):
         super().__init__()
         self._http_client = http_client
         self._config = settings
-        self._source_name = "SAFE"
+        self._source_name = SOURCE_SAFE
+        self._discovered_year_urls: dict[int, str] = {}
 
     @property
     def source_name(self) -> str:
@@ -67,9 +69,10 @@ class SAFEScraper(BaseScraper):
 
         # 首先从索引页动态发现所有有 Excel 的页面
         discovered_urls = await self._discover_excel_pages()
+        self._discovered_year_urls = discovered_urls
 
-        # 合并发现的 URL 和硬编码的 URL
-        all_year_urls = {**self.YEAR_URLS, **discovered_urls}
+        # 动态发现优先，兜底历史缺失年份
+        all_year_urls = {**self.FALLBACK_YEAR_URLS, **discovered_urls}
 
         # 获取最近5年数据
         current_year = datetime.now().year
@@ -102,9 +105,7 @@ class SAFEScraper(BaseScraper):
                     all_data.extend(monthly_data)
 
                 # 避免请求过快
-                import asyncio
-
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(self.FETCH_DELAY_SECONDS)
 
             except Exception as e:
                 logger.warning(f"Failed to fetch SAFE data for {year}: {e}")
@@ -129,7 +130,7 @@ class SAFEScraper(BaseScraper):
         Returns:
             该月的数据字典
         """
-        url = self.YEAR_URLS.get(year)
+        url = await self._resolve_year_page_url(year)
         if not url:
             logger.warning(f"No URL for year {year}")
             return None
@@ -158,6 +159,15 @@ class SAFEScraper(BaseScraper):
         except Exception as e:
             logger.error(f"Failed to fetch SAFE data for {year}-{month}: {e}")
             return None
+
+    async def _resolve_year_page_url(self, year: int) -> str | None:
+        if year in self._discovered_year_urls:
+            return self._discovered_year_urls[year]
+        if year in self.FALLBACK_YEAR_URLS:
+            return self.FALLBACK_YEAR_URLS[year]
+        discovered = await self._discover_excel_pages()
+        self._discovered_year_urls.update(discovered)
+        return self._discovered_year_urls.get(year)
 
     async def _discover_excel_pages(self) -> dict[int, str]:
         """
@@ -199,9 +209,7 @@ class SAFEScraper(BaseScraper):
                     pass
 
                 # 避免请求过快
-                import asyncio
-
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(self.DISCOVERY_DELAY_SECONDS)
 
         except Exception as e:
             logger.warning(f"Failed to discover Excel pages: {e}")
@@ -313,8 +321,8 @@ class SAFEScraper(BaseScraper):
 
                                 results.append(
                                     {
-                                        "country_code": "CHN",
-                                        "country_name": "中国",
+                                        "country_code": COUNTRY_CN_CODE,
+                                        "country_name": COUNTRY_CN_NAME,
                                         "amount": round(gold_tonnes, 2),
                                         "amount_wan_oz": gold_wan_oz,
                                         "date": date_str,
@@ -344,28 +352,16 @@ class SAFEScraper(BaseScraper):
             return []
 
         reserves = []
-        fetch_time = utcnow()
 
         for item in raw_data.get("data", []):
             try:
-                # 解析日期
-                report_date = date.today()
-                date_str = item.get("date")
-                if date_str:
-                    try:
-                        report_date = datetime.strptime(date_str, "%Y-%m").date()
-                    except ValueError:
-                        pass
-
                 reserves.append(
-                    GoldReserve(
+                    GoldReserve.from_monthly(
+                        date_str=item["date"],
+                        tonnes=float(item["amount"]),
                         country_code=item["country_code"],
                         country_name=item["country_name"],
-                        amount_tonnes=float(item["amount"]),
-                        percent_of_reserves=None,
-                        report_date=report_date,
-                        data_source="SAFE",
-                        fetch_time=fetch_time,
+                        source=SOURCE_SAFE,
                     )
                 )
             except Exception as e:

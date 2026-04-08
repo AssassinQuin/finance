@@ -16,15 +16,16 @@ from __future__ import annotations
 import asyncio
 import random
 import socket
-from datetime import datetime, timedelta
 
 import aiohttp
+from dateutil.relativedelta import relativedelta
 
 from fcli.core.config import Settings
+from fcli.core.models.base import SOURCE_IMF
 from fcli.core.models.gold import GoldReserve
 from fcli.infra.http_client import HttpClient
 from fcli.utils.logger import get_logger
-from fcli.utils.time_util import utcnow
+from fcli.utils.time_util import MONTH_FORMAT, utcnow
 
 logger = get_logger("fcli.scraper.imf")
 
@@ -121,8 +122,6 @@ class IMFScraper:
         "VNM": "越南",
     }
 
-    BATCH_CONCURRENCY = 5
-
     def __init__(
         self,
         http_client: HttpClient,
@@ -138,7 +137,7 @@ class IMFScraper:
         self.country_codes = country_codes or self.GOLD_COUNTRY_CODES
         self._consecutive_dns_failures = 0
         self._dns_circuit_open = False
-        self._semaphore = asyncio.Semaphore(self.BATCH_CONCURRENCY)
+        self._semaphore = asyncio.Semaphore(self._config.datasource.gold.imf_batch_concurrency)
 
     def _get_api_key(self) -> str | None:
         return self._config.api.imf_primary
@@ -180,7 +179,10 @@ class IMFScraper:
         for attempt in range(self.MAX_RETRIES):
             try:
                 session = await self._http_client.get_session()
-                timeout = aiohttp.ClientTimeout(total=60, connect=30)
+                timeout = aiohttp.ClientTimeout(
+                    total=self._config.datasource.gold.imf_timeout_total,
+                    connect=self._config.datasource.gold.imf_timeout_connect,
+                )
                 proxy = self._get_proxy(url)
 
                 async with self._semaphore:
@@ -319,25 +321,21 @@ class IMFScraper:
             parsed = self._parse_response(data, country_code)
 
             country_name = self.country_codes.get(country_code, country_code)
-            fetch_time = utcnow()
 
             reserves = []
             for period, tonnes in parsed:
                 try:
-                    report_date = datetime.strptime(period, "%Y-%m").date()
-                except ValueError:
-                    report_date = utcnow().date()
-
-                reserves.append(
-                    GoldReserve(
-                        country_code=country_code,
-                        country_name=country_name,
-                        amount_tonnes=tonnes,
-                        report_date=report_date,
-                        data_source="IMF",
-                        fetch_time=fetch_time,
+                    reserves.append(
+                        GoldReserve.from_monthly(
+                            date_str=period,
+                            tonnes=tonnes,
+                            country_code=country_code,
+                            country_name=country_name,
+                            source=SOURCE_IMF,
+                        )
                     )
-                )
+                except ValueError:
+                    continue
 
             return reserves
 
@@ -348,10 +346,10 @@ class IMFScraper:
     async def get_latest_gold_reserve(self, country_code: str) -> GoldReserve | None:
         """Get the most recent gold reserve for a country."""
         end_date = utcnow()
-        start_date = end_date - timedelta(days=365)
+        start_date = end_date - relativedelta(years=1)
 
-        start_period = start_date.strftime("%Y-%m")
-        end_period = end_date.strftime("%Y-%m")
+        start_period = start_date.strftime(MONTH_FORMAT)
+        end_period = end_date.strftime(MONTH_FORMAT)
 
         reserves = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
 
@@ -363,10 +361,10 @@ class IMFScraper:
     async def get_gold_reserves_history(self, country_code: str, years: int = 10) -> list[GoldReserve]:
         """Get historical gold reserves for a country."""
         end_date = utcnow()
-        start_date = end_date - timedelta(days=years * 365)
+        start_date = end_date - relativedelta(years=years)
 
-        start_period = start_date.strftime("%Y-%m")
-        end_period = end_date.strftime("%Y-%m")
+        start_period = start_date.strftime(MONTH_FORMAT)
+        end_period = end_date.strftime(MONTH_FORMAT)
 
         reserves = await self.fetch_gold_reserves(country_code, start_period=start_period, end_period=end_period)
 
@@ -384,7 +382,8 @@ class IMFScraper:
 
         # Try the first country as a canary request
         first_code = next(iter(self.country_codes), "USA")
-        url = self._build_data_url(first_code, start_period="2025-01", end_period="2025-01")
+        period = utcnow().strftime(MONTH_FORMAT)
+        url = self._build_data_url(first_code, start_period=period, end_period=period)
 
         try:
             await self._request_with_backoff(url)
@@ -452,7 +451,7 @@ class IMFScraper:
         return {
             "country_code": country_code,
             "country_name": reserves[0].country_name if reserves else country_code,
-            "data": {r.report_date.strftime("%Y-%m"): r.amount_tonnes for r in reserves if r.report_date},
+            "data": {r.report_date.strftime(MONTH_FORMAT): r.amount_tonnes for r in reserves if r.report_date},
         }
 
     async def batch_get_latest_reserves_dict(self, country_codes: list[str] | None = None) -> list[dict]:
@@ -463,7 +462,7 @@ class IMFScraper:
                 "country_code": r.country_code,
                 "country_name": r.country_name,
                 "value": r.amount_tonnes,
-                "period": r.report_date.strftime("%Y-%m") if r.report_date else "",
+                "period": r.report_date.strftime(MONTH_FORMAT) if r.report_date else "",
             }
             for r in reserves
         ]

@@ -16,7 +16,7 @@ from ..core.models.asset import AssetType
 from ..core.models.gold import GoldReserve
 from ..core.stores.gold import gold_reserve_store
 from ..utils.logger import get_logger
-from ..utils.time_util import utcnow
+from ..utils.time_util import MONTH_FORMAT, utcnow
 from .scrapers.akshare_scraper import AkShareScraper
 from .scrapers.imf_scraper import IMFScraper
 from .scrapers.ria_scraper import RIAScraper
@@ -265,7 +265,7 @@ class GoldReserveService:
                             if tonnes is None:
                                 continue
                             try:
-                                report_date = datetime.strptime(period, "%Y-%m").date()
+                                report_date = datetime.strptime(period, MONTH_FORMAT).date()
                             except ValueError:
                                 continue
                             reserves.append(
@@ -357,7 +357,9 @@ class GoldReserveService:
         """
         if Database.is_enabled():
             try:
-                days = months * 30
+                end_date = utcnow().date()
+                start_date = end_date - relativedelta(months=months)
+                days = max(1, (end_date - start_date).days)
                 records = await gold_reserve_store.get_country_history(country_code, days)
                 if records:
                     return [
@@ -449,7 +451,11 @@ class GoldReserveService:
             "country": country_name,
             "code": country_code,
             "amount": float(amount) if amount else 0.0,
-            "date": period.strftime("%Y-%m") if isinstance(period, date | datetime) else str(period) if period else "",
+            "date": period.strftime(MONTH_FORMAT)
+            if isinstance(period, date | datetime)
+            else str(period)
+            if period
+            else "",
             "source": source,
         }
 
@@ -467,7 +473,7 @@ class GoldReserveService:
         for row in results:
             report_date = row.get("report_date")
             if isinstance(report_date, date | datetime):
-                date_str = report_date.strftime("%Y-%m")
+                date_str = report_date.strftime(MONTH_FORMAT)
             else:
                 date_str = str(report_date) if report_date else ""
 

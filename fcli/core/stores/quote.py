@@ -1,12 +1,10 @@
 """Quote store - flat table implementation."""
 
-from datetime import datetime, timezone
-
 from ...core.database import Database
 from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 from ..models.asset import Quote
-from ..models.base import AssetType, Market
+from ..models.base import SOURCE_AKSHARE, AssetType, Market
 
 
 class QuoteStore:
@@ -28,7 +26,7 @@ class QuoteStore:
             volume = EXCLUDED.volume
     """
 
-    def _quote_to_args(self, quote: Quote, now: datetime, source: str = "Akshare") -> tuple:
+    def _quote_to_args(self, quote: Quote, now, source: str = SOURCE_AKSHARE) -> tuple:
         asset_type = "fund" if quote.type == AssetType.FUND else "stock"
         return (
             quote.code,
@@ -44,24 +42,24 @@ class QuoteStore:
             now,
         )
 
-    async def save(self, quote: Quote, source: str = "Akshare") -> bool:
+    async def save(self, quote: Quote, source: str = SOURCE_AKSHARE) -> bool:
         if not Database.is_enabled():
             return False
 
         try:
-            now = datetime.now(timezone.utc)
+            now = utcnow()
             await Database.execute(self._UPSERT_SQL, *self._quote_to_args(quote, now, source))
             return True
         except Exception as e:
             self._logger.error(f"Failed to save quote {quote.code}: {e}")
             return False
 
-    async def save_many(self, quotes: list[Quote], source: str = "Akshare") -> int:
+    async def save_many(self, quotes: list[Quote], source: str = SOURCE_AKSHARE) -> int:
         if not Database.is_enabled() or not quotes:
             return 0
 
         try:
-            now = datetime.now(timezone.utc)
+            now = utcnow()
             args_list = [self._quote_to_args(q, now, source) for q in quotes]
             await Database.execute_many(self._UPSERT_SQL, args_list)
             return len(args_list)

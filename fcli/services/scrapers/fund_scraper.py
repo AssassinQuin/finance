@@ -7,9 +7,99 @@ from typing import Any
 
 from ...core.models import Fund, FundType, InvestType
 from ...utils.logger import get_logger
+from ...utils.time_util import DATE_FORMAT
 from .base import BaseScraper, ScraperResult
 
 logger = get_logger("fcli.scraper.fund")
+
+US_INDEX_FUND_SPECS = [
+    {
+        "code": ".INX",
+        "name": "S&P 500 Index",
+        "name_short": "标普500",
+        "fund_type": FundType.INDEX,
+        "market": "US",
+        "is_active": True,
+    },
+    {
+        "code": ".DJI",
+        "name": "Dow Jones Industrial Average",
+        "name_short": "道琼斯工业平均指数",
+        "fund_type": FundType.INDEX,
+        "market": "US",
+        "is_active": True,
+    },
+    {
+        "code": ".IXIC",
+        "name": "Nasdaq Composite Index",
+        "name_short": "纳斯达克综合指数",
+        "fund_type": FundType.INDEX,
+        "market": "US",
+        "is_active": True,
+    },
+    {
+        "code": ".NDX",
+        "name": "Nasdaq 100 Index",
+        "name_short": "纳斯达克100指数",
+        "fund_type": FundType.INDEX,
+        "market": "US",
+        "is_active": True,
+    },
+    {
+        "code": "QQQ",
+        "name": "Invesco QQQ Trust",
+        "name_short": "纳斯达克100 ETF",
+        "fund_type": FundType.ETF,
+        "market": "US",
+        "management_fee": 0.0020,
+        "is_active": True,
+    },
+    {
+        "code": "QQQM",
+        "name": "Invesco NASDAQ 100 ETF",
+        "name_short": "纳斯达克100 ETF (迷你)",
+        "fund_type": FundType.ETF,
+        "market": "US",
+        "management_fee": 0.0015,
+        "is_active": True,
+    },
+    {
+        "code": "SPY",
+        "name": "SPDR S&P 500 ETF Trust",
+        "name_short": "标普500 ETF",
+        "fund_type": FundType.ETF,
+        "market": "US",
+        "management_fee": 0.0009,
+        "is_active": True,
+    },
+    {
+        "code": "IVV",
+        "name": "iShares Core S&P 500 ETF",
+        "name_short": "标普500 ETF (iShares)",
+        "fund_type": FundType.ETF,
+        "market": "US",
+        "management_fee": 0.0003,
+        "is_active": True,
+    },
+    {
+        "code": "VOO",
+        "name": "Vanguard S&P 500 ETF",
+        "name_short": "标普500 ETF (Vanguard)",
+        "fund_type": FundType.ETF,
+        "market": "US",
+        "management_fee": 0.0003,
+        "is_active": True,
+    },
+    {
+        "code": "DIA",
+        "name": "SPDR Dow Jones Industrial Average ETF Trust",
+        "name_short": "道琼斯ETF",
+        "fund_type": FundType.ETF,
+        "market": "US",
+        "management_fee": 0.0016,
+        "is_active": True,
+    },
+]
 
 
 class FundScraper(BaseScraper[Fund]):
@@ -164,95 +254,7 @@ class FundScraper(BaseScraper[Fund]):
 
     async def scrape_us_indices(self) -> list[Fund]:
         """Scrape US market indices and popular ETFs."""
-        us_funds = [
-            Fund(
-                code=".INX",
-                name="S&P 500 Index",
-                name_short="标普500",
-                fund_type=FundType.INDEX,
-                market="US",
-                is_active=True,
-            ),
-            Fund(
-                code=".DJI",
-                name="Dow Jones Industrial Average",
-                name_short="道琼斯工业平均指数",
-                fund_type=FundType.INDEX,
-                market="US",
-                is_active=True,
-            ),
-            Fund(
-                code=".IXIC",
-                name="Nasdaq Composite Index",
-                name_short="纳斯达克综合指数",
-                fund_type=FundType.INDEX,
-                market="US",
-                is_active=True,
-            ),
-            Fund(
-                code=".NDX",
-                name="Nasdaq 100 Index",
-                name_short="纳斯达克100指数",
-                fund_type=FundType.INDEX,
-                market="US",
-                is_active=True,
-            ),
-            Fund(
-                code="QQQ",
-                name="Invesco QQQ Trust",
-                name_short="纳斯达克100 ETF",
-                fund_type=FundType.ETF,
-                market="US",
-                management_fee=0.0020,
-                is_active=True,
-            ),
-            Fund(
-                code="QQQM",
-                name="Invesco NASDAQ 100 ETF",
-                name_short="纳斯达克100 ETF (迷你)",
-                fund_type=FundType.ETF,
-                market="US",
-                management_fee=0.0015,
-                is_active=True,
-            ),
-            Fund(
-                code="SPY",
-                name="SPDR S&P 500 ETF Trust",
-                name_short="标普500 ETF",
-                fund_type=FundType.ETF,
-                market="US",
-                management_fee=0.0009,
-                is_active=True,
-            ),
-            Fund(
-                code="IVV",
-                name="iShares Core S&P 500 ETF",
-                name_short="标普500 ETF (iShares)",
-                fund_type=FundType.ETF,
-                market="US",
-                management_fee=0.0003,
-                is_active=True,
-            ),
-            Fund(
-                code="VOO",
-                name="Vanguard S&P 500 ETF",
-                name_short="标普500 ETF (Vanguard)",
-                fund_type=FundType.ETF,
-                market="US",
-                management_fee=0.0003,
-                is_active=True,
-            ),
-            Fund(
-                code="DIA",
-                name="SPDR Dow Jones Industrial Average ETF Trust",
-                name_short="道琼斯ETF",
-                fund_type=FundType.ETF,
-                market="US",
-                management_fee=0.0016,
-                is_active=True,
-            ),
-        ]
-        return us_funds
+        return [Fund(**spec) for spec in US_INDEX_FUND_SPECS]
 
     def _parse_invest_type(self, value: Any) -> InvestType | None:
         """Parse invest type from string."""
@@ -297,6 +299,6 @@ class FundScraper(BaseScraper[Fund]):
 
         try:
             value_str = str(value).strip()
-            return datetime.strptime(value_str, "%Y-%m-%d").date()
+            return datetime.strptime(value_str, DATE_FORMAT).date()
         except (ValueError, TypeError):
             return None

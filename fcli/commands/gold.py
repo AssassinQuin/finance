@@ -6,6 +6,7 @@ import typer
 from ..core.container import container
 from ..utils.command import run_command
 from ..utils.presenter import ConsolePresenter
+from ..utils.time_util import DATETIME_FORMAT
 
 app = typer.Typer(help="黄金数据", context_settings={"help_option_names": ["-h", "--help"]})
 
@@ -45,7 +46,7 @@ async def _reserves(update: bool) -> None:
             {
                 "reserves": reserves,
                 "balance": balance,
-                "last_update": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "last_update": datetime.now().strftime(DATETIME_FORMAT),
             }
         )
 

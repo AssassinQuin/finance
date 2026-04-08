@@ -46,16 +46,14 @@ class HttpClient:
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
             headers = {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "User-Agent": config.http.user_agent,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
             }
-            connection_limit = getattr(config.http, "max_connections", None) or config.http.max_concurrent or 100
-            host_limit = getattr(config.http, "max_per_host", None) or 10
             connector = aiohttp.TCPConnector(
                 ssl=False,
-                limit=connection_limit,
-                limit_per_host=host_limit,
+                limit=config.http.max_connections,
+                limit_per_host=config.http.max_per_host,
             )
             self.session = aiohttp.ClientSession(
                 connector=connector,

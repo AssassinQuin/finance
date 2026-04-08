@@ -4,6 +4,7 @@ from ...utils.logger import get_logger
 from ...utils.time_util import utcnow
 from ..database import Database
 from ..models import ExchangeRate
+from ..models.base import SOURCE_FRANKFURTER
 
 _logger = get_logger("fcli.stores.exchange_rate")
 
@@ -32,7 +33,7 @@ class ExchangeRateStore:
                 rate.quote_currency.upper(),
                 rate_time,
                 rate.rate,
-                rate.source or "Frankfurter",
+                rate.source or SOURCE_FRANKFURTER,
                 utcnow(),
             )
             return True

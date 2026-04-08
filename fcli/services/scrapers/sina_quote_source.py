@@ -1,11 +1,38 @@
 """新浪行情数据源"""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...core.models import Asset, Market, Quote
+
 from ...core.config import Settings
 from ...core.interfaces.source import QuoteSourceABC
-from ...core.models import Asset, Market, Quote
+from ...core.models.base import Market
 from ...infra.http_client import HttpClient
+from ...utils.calc import calc_change_percent
 from ...utils.logger import quote_logger as logger
 from ...utils.time_util import utcnow
+
+
+@dataclass(frozen=True)
+class SinaFieldMap:
+    name: int
+    price: int
+    prev_close: int
+    high: int
+    low: int
+    volume: int
+    min_parts: int
+
+
+SINA_FIELD_MAPS: dict[Market, SinaFieldMap] = {
+    Market.CN: SinaFieldMap(name=0, price=3, prev_close=2, high=4, low=5, volume=8, min_parts=32),
+    Market.HK: SinaFieldMap(name=1, price=6, prev_close=3, high=4, low=5, volume=12, min_parts=15),
+    Market.US: SinaFieldMap(name=0, price=1, prev_close=26, high=4, low=5, volume=10, min_parts=15),
+}
 
 
 class SinaQuoteSource(QuoteSourceABC):
@@ -48,11 +75,11 @@ class SinaQuoteSource(QuoteSourceABC):
             return []
 
         codes = [asset.api_code for asset in assets]
-        url = f"https://hq.sinajs.cn/list={','.join(codes)}"
+        url = self._config.datasource.sina.cn_quote_url.format(code=",".join(codes))
 
         try:
             text = await self._http_client.fetch(
-                url, text_mode=True, headers={"Referer": "https://finance.sina.com.cn"}
+                url, text_mode=True, headers={"Referer": self._config.datasource.sina.referer}
             )
             if not text:
                 return []
@@ -87,65 +114,28 @@ class SinaQuoteSource(QuoteSourceABC):
             return []
 
     def _parse_data(self, asset: Asset, data_str: str, market: Market) -> Quote | None:
+        from ...core.models import Quote
+
+        fm = SINA_FIELD_MAPS.get(market)
+        if fm is None:
+            return None
+
         parts = data_str.split(",")
+        if len(parts) < fm.min_parts:
+            return None
 
-        if market == Market.CN:
-            if len(parts) < 32:
-                return None
-            return Quote(
-                code=asset.code,
-                name=parts[0] or asset.name,
-                price=float(parts[3]) if parts[3] else 0.0,
-                change_percent=self._calc_change_percent(
-                    float(parts[3]) if parts[3] else 0, float(parts[2]) if parts[2] else 0
-                ),
-                update_time=utcnow(),
-                market=asset.market,
-                type=asset.type,
-                high=float(parts[4]) if parts[4] else None,
-                low=float(parts[5]) if parts[5] else None,
-                volume=float(parts[8]) if parts[8] else None,
-            )
+        price = float(parts[fm.price]) if parts[fm.price] else 0.0
+        prev_close = float(parts[fm.prev_close]) if parts[fm.prev_close] else 0.0
 
-        elif market == Market.HK:
-            if len(parts) < 15:
-                return None
-            return Quote(
-                code=asset.code,
-                name=parts[1] or asset.name,
-                price=float(parts[6]) if parts[6] else 0.0,
-                change_percent=self._calc_change_percent(
-                    float(parts[6]) if parts[6] else 0, float(parts[3]) if parts[3] else 0
-                ),
-                update_time=utcnow(),
-                market=asset.market,
-                type=asset.type,
-                high=float(parts[4]) if parts[4] else None,
-                low=float(parts[5]) if parts[5] else None,
-                volume=parts[12] if parts[12] else None,
-            )
-
-        elif market == Market.US:
-            if len(parts) < 15:
-                return None
-            return Quote(
-                code=asset.code,
-                name=parts[0] or asset.name,
-                price=float(parts[1]) if parts[1] else 0.0,
-                change_percent=self._calc_change_percent(
-                    float(parts[1]) if parts[1] else 0, float(parts[26]) if parts[26] else 0
-                ),
-                update_time=utcnow(),
-                market=asset.market,
-                type=asset.type,
-                high=float(parts[4]) if parts[4] else None,
-                low=float(parts[5]) if parts[5] else None,
-                volume=float(parts[10]) if parts[10] else None,
-            )
-
-        return None
-
-    def _calc_change_percent(self, price: float, prev_close: float) -> float:
-        if prev_close > 0:
-            return (price - prev_close) / prev_close * 100
-        return 0.0
+        return Quote(
+            code=asset.code,
+            name=parts[fm.name] or asset.name,
+            price=price,
+            change_percent=calc_change_percent(price, prev_close),
+            update_time=utcnow(),
+            market=asset.market,
+            type=asset.type,
+            high=float(parts[fm.high]) if parts[fm.high] else None,
+            low=float(parts[fm.low]) if parts[fm.low] else None,
+            volume=parts[fm.volume] if parts[fm.volume] else None,
+        )

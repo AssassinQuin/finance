@@ -82,8 +82,8 @@ class PostgresCache(CacheABC):
     """PostgreSQL UNLOGGED table cache - high performance with TTL support."""
 
     def __init__(self):
-        self._prefix = "fcli:"
-        self._cleanup_interval = 300
+        self._prefix = config.cache.key_prefix
+        self._cleanup_interval = config.cache.pg_cleanup_interval
         self._last_cleanup = 0
         self._lock = asyncio.Lock()
 
@@ -188,7 +188,7 @@ class HybridCache(CacheABC):
         self._use_postgres = True
         self._postgres_available = False
         self._last_health_check = 0
-        self._health_check_interval = 60
+        self._health_check_interval = config.cache.pg_health_check_interval
 
     async def _check_postgres_health(self) -> bool:
         current_time = time.time()

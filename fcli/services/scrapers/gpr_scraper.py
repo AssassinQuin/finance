@@ -1,14 +1,15 @@
 """GPR (Geopolitical Risk Index) data scraper from Caldara-Iacoviello."""
 
-import asyncio
 from datetime import datetime
 from io import BytesIO
 
 import aiohttp
 import pandas as pd
 
-from fcli.core.config import config
+from fcli.core.config import Settings, config
+from fcli.infra.http_client import HttpClient, http_client
 from fcli.utils.logger import get_logger
+from fcli.utils.time_util import MONTH_FORMAT
 
 logger = get_logger("fcli.scraper.gpr")
 
@@ -77,18 +78,18 @@ def _parse_period(date_val) -> str | None:
     if pd.isna(date_val):
         return None
     if isinstance(date_val, datetime):
-        return date_val.strftime("%Y-%m")
+        return date_val.strftime(MONTH_FORMAT)
     if isinstance(date_val, str):
         if len(date_val) == 7 and "-" in date_val:
             return date_val
         if len(date_val) == 6:
             return f"{date_val[:4]}-{date_val[4:6]}"
         try:
-            return pd.to_datetime(date_val).strftime("%Y-%m")
+            return pd.to_datetime(date_val).strftime(MONTH_FORMAT)
         except (ValueError, TypeError):
             return None
     try:
-        return pd.to_datetime(date_val).strftime("%Y-%m")
+        return pd.to_datetime(date_val).strftime(MONTH_FORMAT)
     except (ValueError, TypeError):
         return None
 
@@ -96,10 +97,10 @@ def _parse_period(date_val) -> str | None:
 class GPRScraper:
     """GPR data scraper from Caldara-Iacoviello dataset."""
 
-    def __init__(self):
-        self.data_url = config.datasource.gpr.gpr_data_url
-        self._session: aiohttp.ClientSession | None = None
-        self._session_lock = asyncio.Lock()
+    def __init__(self, http_client_instance: HttpClient | None = None, settings: Settings | None = None):
+        self._config = settings or config
+        self._http_client = http_client_instance or http_client
+        self.data_url = self._config.datasource.gpr.gpr_data_url
 
     async def __aenter__(self):
         return self
@@ -109,29 +110,17 @@ class GPRScraper:
         return False
 
     def _get_proxy(self) -> str | None:
-        if config.proxy.enabled:
-            return config.proxy.http
+        if self._config.proxy.enabled:
+            return self._config.proxy.http
         return None
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        async with self._session_lock:
-            if self._session is None or self._session.closed:
-                connector = aiohttp.TCPConnector(ssl=False)
-                self._session = aiohttp.ClientSession(connector=connector, trust_env=True)
-            return self._session
-
     async def close(self):
-        if self._session and not self._session.closed:
-            connector = self._session.connector
-            await self._session.close()
-            if connector and not connector.closed:
-                await connector.close()
-            self._session = None
+        pass
 
     async def _download_excel(self) -> bytes:
-        session = await self._get_session()
         proxy = self._get_proxy()
         timeout = aiohttp.ClientTimeout(total=120, connect=30)
+        session = await self._http_client.get_session()
 
         async with session.get(self.data_url, proxy=proxy, timeout=timeout) as response:
             if response.status != 200:

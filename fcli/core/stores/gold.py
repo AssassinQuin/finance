@@ -6,8 +6,9 @@ from typing import Any
 from dateutil.relativedelta import relativedelta
 
 from ...utils.logger import get_logger
-from ...utils.time_util import utcnow
+from ...utils.time_util import MONTH_FORMAT, utcnow
 from ..database import Database
+from ..models.base import SOURCE_IMF
 from ..models.gold import GoldReserve
 
 
@@ -34,7 +35,7 @@ class GoldReserveStore:
                 data.country_name,
                 data.amount_tonnes,
                 data.report_date or date.today(),
-                data.data_source or "IMF",
+                data.data_source or SOURCE_IMF,
                 utcnow(),
             )
             return True
@@ -56,7 +57,7 @@ class GoldReserveStore:
                     d.country_name,
                     d.amount_tonnes,
                     d.report_date or date.today(),
-                    d.data_source or "IMF",
+                    d.data_source or SOURCE_IMF,
                     utcnow(),
                 )
                 for d in data_list
@@ -317,7 +318,7 @@ class GoldReserveStore:
                 result[code] = []
             result[code].append(
                 {
-                    "date": row["report_date"].strftime("%Y-%m") if row["report_date"] else "",
+                    "date": row["report_date"].strftime(MONTH_FORMAT) if row["report_date"] else "",
                     "amount": float(row["gold_tonnes"]) if row["gold_tonnes"] else 0.0,
                     "country_name": code_to_name.get(code, ""),
                 }

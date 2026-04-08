@@ -21,3 +21,14 @@ class AssetType(str, Enum):
     FOREX = "FOREX"
     BOND = "BOND"
     GOLD = "GOLD"
+
+
+SOURCE_PBOC = "PBOC"
+SOURCE_SAFE = "SAFE"
+SOURCE_IMF = "IMF"
+SOURCE_AKSHARE = "Akshare"
+SOURCE_FRANKFURTER = "Frankfurter"
+SOURCE_WGC = "WGC"
+
+COUNTRY_CN_CODE = "CHN"
+COUNTRY_CN_NAME = "中国"

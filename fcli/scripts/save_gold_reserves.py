@@ -20,7 +20,7 @@ from fcli.core.models import GoldReserve
 from fcli.core.stores.gold import gold_reserve_store
 from fcli.infra.http_client import HttpClient, run_async
 from fcli.services.scrapers.imf_scraper import IMFScraper
-from fcli.utils.time_util import utcnow
+from fcli.utils.time_util import MONTH_FORMAT, utcnow
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ async def save_latest_reserves(scraper: IMFScraper, country_codes: list[str] | N
         if period:
             try:
                 # period格式: YYYY-MM
-                report_date = datetime.strptime(period, "%Y-%m").date()
+                report_date = datetime.strptime(period, MONTH_FORMAT).date()
             except (ValueError, TypeError):
                 pass
 

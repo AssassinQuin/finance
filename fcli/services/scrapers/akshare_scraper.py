@@ -4,12 +4,11 @@ AkShare 数据源爬虫 - 中国黄金储备历史数据
 """
 
 import re
-from datetime import date, datetime
 from typing import Any
 
 from ...core.models import GoldReserve
+from ...core.models.base import COUNTRY_CN_CODE, COUNTRY_CN_NAME, SOURCE_PBOC
 from ...utils.logger import get_logger
-from ...utils.time_util import utcnow
 from .base import BaseScraper
 
 logger = get_logger("fcli.scraper.akshare")
@@ -25,7 +24,7 @@ class AkShareScraper(BaseScraper):
 
     def __init__(self):
         super().__init__()
-        self._source_name = "PBOC"
+        self._source_name = SOURCE_PBOC
 
     @property
     def source_name(self) -> str:
@@ -74,8 +73,8 @@ class AkShareScraper(BaseScraper):
                     amount_tonnes = gold_val * config.gold.wan_oz_to_tonne
                     all_data.append(
                         {
-                            "country_code": "CHN",
-                            "country_name": "中国",
+                            "country_code": COUNTRY_CN_CODE,
+                            "country_name": COUNTRY_CN_NAME,
                             "amount": round(amount_tonnes, 2),
                             "date": parsed_date,
                         }
@@ -139,40 +138,20 @@ class AkShareScraper(BaseScraper):
         return None
 
     def parse(self, raw_data: Any) -> list[GoldReserve]:
-        """
-        解析 AkShare 数据为 GoldReserve 对象列表
-
-        Args:
-            raw_data: AkShare 返回的原始数据
-
-        Returns:
-            List[GoldReserve]: 黄金储备对象列表
-        """
         if not raw_data or raw_data.get("type") != "akshare":
             return []
 
         reserves = []
-        fetch_time = utcnow()
 
         for item in raw_data.get("data", []):
             try:
-                report_date = date.today()
-                date_str = item.get("date")
-                if date_str:
-                    try:
-                        report_date = datetime.strptime(date_str, "%Y-%m").date()
-                    except ValueError:
-                        pass
-
                 reserves.append(
-                    GoldReserve(
+                    GoldReserve.from_monthly(
+                        date_str=item["date"],
+                        tonnes=float(item["amount"]),
                         country_code=item["country_code"],
                         country_name=item["country_name"],
-                        amount_tonnes=float(item["amount"]),
-                        percent_of_reserves=None,
-                        report_date=report_date,
-                        data_source="PBOC",
-                        fetch_time=fetch_time,
+                        source=SOURCE_PBOC,
                     )
                 )
             except Exception as e:
@@ -182,32 +161,17 @@ class AkShareScraper(BaseScraper):
         return reserves
 
     async def get_china_latest(self) -> GoldReserve | None:
-        """Fetch the latest China gold reserve record.
-
-        Returns:
-            GoldReserve or None if fetch fails.
-        """
         raw = await self.fetch()
         if not raw or not raw.get("data"):
             return None
 
         latest = raw["data"][0]
-        report_date = date.today()
-        date_str = latest.get("date")
-        if date_str:
-            try:
-                report_date = datetime.strptime(date_str, "%Y-%m").date()
-            except ValueError:
-                pass
-
-        return GoldReserve(
-            country_code="CHN",
-            country_name="中国",
-            amount_tonnes=float(latest["amount"]),
-            percent_of_reserves=None,
-            report_date=report_date,
-            data_source="PBOC",
-            fetch_time=utcnow(),
+        return GoldReserve.from_monthly(
+            date_str=latest["date"],
+            tonnes=float(latest["amount"]),
+            country_code=COUNTRY_CN_CODE,
+            country_name=COUNTRY_CN_NAME,
+            source=SOURCE_PBOC,
         )
 
     async def get_china_history(self) -> list[GoldReserve]:

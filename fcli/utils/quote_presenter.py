@@ -3,6 +3,7 @@ from rich.table import Table
 
 from ..core.models import Asset, Quote
 from .base_presenter import BasePresenter, console
+from .time_util import DATETIME_FORMAT
 
 
 class QuotePresenter(BasePresenter):
@@ -58,7 +59,7 @@ class QuotePresenter(BasePresenter):
                 quote.name,
                 f"{quote.price:.2f}",
                 f"[{change_style}]{change_str}[/{change_style}]",
-                quote.update_time.strftime("%Y-%m-%d %H:%M"),
+                quote.update_time.strftime(DATETIME_FORMAT),
                 market_cn,
                 f"[{type_color}]{type_cn}[/{type_color}]",
             )

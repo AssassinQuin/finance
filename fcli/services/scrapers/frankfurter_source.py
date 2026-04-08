@@ -6,7 +6,7 @@ from ...core.config import Settings
 from ...core.interfaces.source import ForexSourceABC
 from ...core.models import ExchangeRate
 from ...infra.http_client import HttpClient
-from ...utils.time_util import utcnow
+from ...utils.time_util import DATE_FORMAT, utcnow
 
 
 class FrankfurterSource(ForexSourceABC):
@@ -39,8 +39,8 @@ class FrankfurterSource(ForexSourceABC):
         if rate is None:
             return None
 
-        date_str = data.get("date", utcnow().strftime("%Y-%m-%d"))
-        update_time = datetime.strptime(date_str, "%Y-%m-%d")
+        date_str = data.get("date", utcnow().strftime(DATE_FORMAT))
+        update_time = datetime.strptime(date_str, DATE_FORMAT)
 
         return ExchangeRate(
             base_currency=base_currency,
