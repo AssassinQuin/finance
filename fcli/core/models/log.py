@@ -19,6 +19,7 @@ class WatchlistAssetDB(BaseModel):
     name: str = ""
     market: Market = Market.CN
     type: AssetType = AssetType.STOCK
+    asset_type: AssetType | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     added_at: datetime | None = None

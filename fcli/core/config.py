@@ -11,14 +11,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-if TYPE_CHECKING:
-    from .models import Asset
-    from .models.base import AssetType, Market
 
 # ============================================================
 # 项目目录和配置文件路径（固定使用项目目录）
@@ -210,20 +205,6 @@ class SinaDataSource(BaseSettings):
         extra="ignore",
     )
 
-    def get_cn_code(self, code: str) -> str:
-        """获取A股API代码"""
-        if code.startswith(("6", "9")):
-            return f"{self.cn_sh_prefix}{code}"
-        return f"{self.cn_sz_prefix}{code}"
-
-    def get_hk_code(self, code: str) -> str:
-        """获取港股API代码"""
-        return f"{self.hk_prefix}{code}"
-
-    def get_us_code(self, code: str) -> str:
-        """获取美股API代码"""
-        return f"{self.us_prefix}{code.lower()}"
-
 
 class EastmoneyDataSource(BaseSettings):
     """东方财富数据源配置"""
@@ -247,31 +228,6 @@ class EastmoneyDataSource(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-    def get_cn_secid(self, code: str) -> str:
-        """获取A股 secid"""
-        if code.startswith(("sh", "SH")):
-            return f"{self.cn_sh_market_code}.{code[2:]}"
-        elif code.startswith(("sz", "SZ")):
-            return f"{self.cn_sz_market_code}.{code[2:]}"
-        elif code.startswith("6"):
-            return f"{self.cn_sh_market_code}.{code}"
-        return f"{self.cn_sz_market_code}.{code}"
-
-    def get_hk_secid(self, code: str) -> str:
-        """获取港股 secid"""
-        clean_code = code.replace("rt_hk", "")
-        return f"{self.hk_market_code}.{clean_code}"
-
-    def get_us_secid(self, code: str) -> str:
-        """获取美股 secid"""
-        return f"{self.us_market_code}.{code}"
-
-    def get_global_secid(self, code: str) -> str:
-        """获取全球指数 secid"""
-        if "." in code:
-            return f"{self.global_market_code}.{code.split('.')[1]}"
-        return f"{self.global_market_code}.{code}"
 
 
 class FundDataSource(BaseSettings):
@@ -411,136 +367,17 @@ class Settings(BaseSettings):
 
 
 # ============================================================
-# 符号解析服务
-# ============================================================
-
-
-class SymbolRegistry:
-    """统一符号解析服务 - 将用户代码转换为 API 代码"""
-
-    def __init__(self, datasource: DataSourceConfig):
-        self.datasource = datasource
-
-    def resolve_api_code(self, code: str, market: Market) -> str:
-        """根据市场和代码解析 API 代码
-
-        Args:
-            code: 用户输入的代码 (e.g., "600519", "AAPL")
-            market: 市场类型 (CN/HK/US)
-
-        Returns:
-            API 代码 (e.g., "sh600519", "gb_aapl")
-
-        Raises:
-            ValueError: 不支持的市场类型
-        """
-        from .models.base import Market
-
-        if market == Market.CN:
-            return self.datasource.sina.get_cn_code(code)
-        elif market == Market.HK:
-            return self.datasource.sina.get_hk_code(code)
-        elif market == Market.US:
-            return self.datasource.sina.get_us_code(code)
-        else:
-            raise ValueError(f"Unsupported market: {market}")
-
-    def infer_market(self, code: str) -> Market:
-        """从代码推断市场类型
-
-        Args:
-            code: 股票代码（支持 SH/SZ/HK 前缀或纯代码）
-
-        Returns:
-            推断的市场类型
-        """
-        from .models.base import Market
-
-        code_upper = code.upper().strip()
-
-        # 港股：HK前缀 或 5位数字
-        if code_upper.startswith("HK") or (code.isdigit() and len(code) == 5):
-            return Market.HK
-
-        # A股：SH/SZ前缀 或 6位数字
-        if code_upper.startswith(("SH", "SZ")) or (code.isdigit() and len(code) == 6):
-            return Market.CN
-
-        # 美股：字母
-        if code.isalpha():
-            return Market.US
-
-        # 默认美股
-        return Market.US
-
-    def infer_type(self, code: str) -> AssetType:
-        from .models.base import AssetType
-
-        gold_codes = {"GC", "XAU", "GOLD"}
-        if code.upper().strip() in gold_codes:
-            return AssetType.GOLD
-
-        if code.isdigit() and len(code) == 6:
-            prefix2 = code[:2]
-            prefix3 = code[:3]
-
-            fund_prefixes_2 = {"11", "15", "16", "50", "51", "52"}
-            fund_prefixes_3 = {"159"}
-
-            if prefix2 in fund_prefixes_2 or prefix3 in fund_prefixes_3:
-                return AssetType.FUND
-
-        return AssetType.STOCK
-
-    def create_asset(self, code: str) -> Asset:
-        from .models import Asset
-
-        code = code.strip()
-        code_upper = code.upper()
-        market = self.infer_market(code)
-        asset_type = self.infer_type(code)
-        api_code = self._to_api_code(code, market)
-        return Asset(
-            code=code_upper,
-            api_code=api_code,
-            name=code_upper,
-            market=market,
-            type=asset_type,
-        )
-
-    def _to_api_code(self, code: str, market: Market) -> str:
-        code_lower = code.lower()
-        if market == Market.CN:
-            if code_lower.startswith(("sh", "sz")):
-                return code_lower
-            prefix = code[:2]
-            return f"sh{code}" if prefix in ("60", "68") else f"sz{code}"
-        elif market == Market.HK:
-            code_num = code[-5:] if code.upper().startswith("HK") else code
-            return f"rt_hk{code_num}"
-        else:
-            return code_lower
-
-
-# ============================================================
 # 初始化配置
 # ============================================================
 
-# 创建配置实例
 config = Settings()
 
-symbol_registry = SymbolRegistry(config.datasource)
 
-
-# 导出公共接口
 __all__ = [
     "config",
     "Settings",
     "PACKAGE_ROOT",
     "PROJECT_ENV_PATH",
-    "symbol_registry",
-    "SymbolRegistry",
-    # 数据源配置类
     "DataSourceConfig",
     "SinaDataSource",
     "EastmoneyDataSource",

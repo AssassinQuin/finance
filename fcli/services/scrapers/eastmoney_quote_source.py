@@ -1,8 +1,9 @@
 """东方财富行情数据源"""
 
+from ...core.code_mapper import code_mapper
 from ...core.config import Settings
 from ...core.interfaces.source import QuoteSourceABC
-from ...core.models import Asset, Market, Quote
+from ...core.models import Asset, Quote
 from ...infra.http_client import HttpClient
 from ...utils.time_util import utcnow
 
@@ -21,23 +22,8 @@ class EastmoneyQuoteSource(QuoteSourceABC):
     async def is_available(self) -> bool:
         return True
 
-    def _build_secid(self, asset: Asset) -> str | None:
-        market = asset.market
-        if market == Market.CN:
-            if asset.api_code.startswith(("sh", "SH")):
-                return f"1.{asset.api_code[2:]}"
-            return f"0.{asset.api_code[2:]}"
-        elif market == Market.HK:
-            return f"116.{asset.api_code.replace('rt_hk', '')}"
-        elif market == Market.US:
-            return f"105.{asset.api_code}"
-        elif market == Market.GLOBAL:
-            code = asset.api_code.split(".")[1] if "." in asset.api_code else asset.api_code
-            return f"106.{code}"
-        return None
-
     async def fetch_single(self, asset: Asset) -> Quote | None:
-        secid = self._build_secid(asset)
+        secid = code_mapper.to_eastmoney_secid(asset.api_code, asset.market)
         if not secid:
             return None
 

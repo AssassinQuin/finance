@@ -1,6 +1,6 @@
 """Watchlist service for managing user's tracked assets."""
 
-from ..core.config import symbol_registry
+from ..core.code_mapper import code_mapper
 from ..core.interfaces.storage import StorageABC
 from ..core.models import Asset
 from ..core.storage import HybridStorage
@@ -17,7 +17,7 @@ class WatchlistService:
         if not codes:
             return 0
 
-        assets_to_add = [symbol_registry.create_asset(code) for code in codes]
+        assets_to_add = [code_mapper.create_asset(code) for code in codes]
         added = 0
 
         for asset in assets_to_add:

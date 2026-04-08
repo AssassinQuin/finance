@@ -65,7 +65,7 @@ class SinaQuoteSource(QuoteSourceABC):
                     continue
 
                 code_part, data_part = line.split("=", 1)
-                api_code = code_part.split("_")[-1]
+                api_code = code_part.split("hq_str_")[-1] if "hq_str_" in code_part else code_part.split("_")[-1]
 
                 if api_code not in asset_map:
                     continue

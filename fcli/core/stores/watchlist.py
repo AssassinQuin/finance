@@ -15,6 +15,7 @@ class WatchlistAssetStore:
 
         market_val = row.get("market", "")
         type_val = row.get("type", "")
+        asset_type_val = row.get("asset_type", "")
         return WatchlistAssetDB(
             id=row.get("id"),
             code=row.get("code", ""),
@@ -22,6 +23,7 @@ class WatchlistAssetStore:
             name=row.get("name", ""),
             market=Market(market_val) if market_val else Market.CN,
             type=AssetType(type_val) if type_val else AssetType.STOCK,
+            asset_type=AssetType(asset_type_val) if asset_type_val else None,
             extra=extra_data,
             is_active=bool(row.get("is_active", True)),
             added_at=row.get("added_at"),
@@ -46,6 +48,7 @@ class WatchlistAssetStore:
             name=asset.name,
             market=asset.market,
             type=asset.type,
+            asset_type=asset.type,
             extra=asset.extra,
             is_active=True,
             added_at=asset.added_at,
@@ -81,13 +84,14 @@ class WatchlistAssetStore:
 
         sql = """
         INSERT INTO watchlist_assets
-            (code, api_code, name, market, type, extra, is_active, added_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (code, api_code, name, market, type, asset_type, extra, is_active, added_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (code) DO UPDATE SET
             api_code = EXCLUDED.api_code,
             name = EXCLUDED.name,
             market = EXCLUDED.market,
             type = EXCLUDED.type,
+            asset_type = EXCLUDED.asset_type,
             extra = EXCLUDED.extra,
             is_active = TRUE,
             updated_at = NOW()
@@ -98,9 +102,10 @@ class WatchlistAssetStore:
             db_asset.code,
             db_asset.api_code,
             db_asset.name,
-            db_asset.market,
-            db_asset.type,
-            db_asset.extra or {},
+            db_asset.market.value,
+            db_asset.type.value,
+            db_asset.type.value,
+            json.dumps(db_asset.extra or {}),
             db_asset.is_active,
             db_asset.added_at or utcnow(),
         )

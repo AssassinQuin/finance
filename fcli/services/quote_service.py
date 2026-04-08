@@ -9,6 +9,7 @@
 from datetime import datetime
 
 from ..core.cache_strategy import CacheStrategyBase
+from ..core.code_mapper import code_mapper
 from ..core.config import Settings
 from ..core.interfaces.cache import CacheABC
 from ..core.interfaces.source import QuoteSourceABC
@@ -171,10 +172,7 @@ class QuoteService:
 
         global_assets = market_groups.pop(Market.GLOBAL, [])
         if global_assets:
-            secids = [
-                f"100.{asset.api_code.split('.')[1] if '.' in asset.api_code else asset.api_code}"
-                for asset in global_assets
-            ]
+            secids = [code_mapper.to_eastmoney_secid(a.api_code, a.market) for a in global_assets]
             tasks.append(self._fetch_global_batch(global_assets, secids))
 
         stock_assets = [a for assets in market_groups.values() for a in assets]
