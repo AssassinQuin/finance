@@ -14,15 +14,12 @@ from .exceptions import (
     SourceUnavailableError,
     ValidationError,
 )
-from .factories import AssetFactory
 
 __all__ = [
     "config",
     "Database",
-    "AssetFactory",
     "stores",
     "models",
-    # Exceptions
     "FcliError",
     "SourceError",
     "SourceUnavailableError",

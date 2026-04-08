@@ -1,5 +1,6 @@
 """Storage implementations - PostgreSQL + File fallback."""
 
+import asyncio
 import json
 import os
 import tempfile
@@ -11,8 +12,6 @@ from .models import Asset
 
 
 class FileStorage(StorageABC):
-    """File-based storage for watchlist assets (local fallback)."""
-
     def __init__(self):
         self.storage_dir = Path.home() / ".fcli"
         self.storage_file = self.storage_dir / "watchlist.json"
@@ -42,7 +41,7 @@ class FileStorage(StorageABC):
             return {"assets": []}
 
     async def load(self) -> list[Asset]:
-        data = self._read_json()
+        data = await asyncio.to_thread(self._read_json)
         assets = []
         for asset_dict in data.get("assets", []):
             try:
@@ -53,7 +52,7 @@ class FileStorage(StorageABC):
 
     async def save(self, assets: list[Asset]):
         data = {"assets": [asset.model_dump() for asset in assets]}
-        self._atomic_write(data)
+        await asyncio.to_thread(self._atomic_write, data)
 
     async def add(self, asset: Asset) -> bool:
         assets = await self.load()
@@ -206,6 +205,3 @@ class HybridStorage(StorageABC):
     @property
     def is_postgres_available(self) -> bool:
         return self._postgres_available
-
-
-storage = HybridStorage()

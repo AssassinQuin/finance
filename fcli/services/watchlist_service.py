@@ -1,27 +1,23 @@
 """Watchlist service for managing user's tracked assets."""
 
-from ..core.factories import AssetFactory
+from ..core.config import symbol_registry
 from ..core.interfaces.storage import StorageABC
 from ..core.models import Asset
-from ..core.storage import storage as default_storage
+from ..core.storage import HybridStorage
 
 
 class WatchlistService:
-    """Service for managing watchlist assets with DB and JSON fallback."""
-
     def __init__(self, storage: StorageABC | None = None):
-        self._storage = storage or default_storage
+        self._storage = storage or HybridStorage()
 
     async def list_assets(self) -> list[Asset]:
-        """List all active assets in watchlist."""
         return await self._storage.load()
 
     async def add_assets(self, codes: list[str]) -> int:
-        """Add assets to watchlist. Returns count added."""
         if not codes:
             return 0
 
-        assets_to_add = [AssetFactory.from_code(code) for code in codes]
+        assets_to_add = [symbol_registry.create_asset(code) for code in codes]
         added = 0
 
         for asset in assets_to_add:

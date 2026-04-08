@@ -23,7 +23,7 @@ import logging
 from fcli.core.models.gold_supply_demand import GoldSupplyDemand
 from fcli.core.stores.gold_supply_demand import gold_supply_demand_store
 from fcli.infra.http_client import HttpClient, run_async
-from fcli.services.scrapers.wgc_scraper import QuarterlySupplyDemand, WGCScraper
+from fcli.services.scrapers.wgc_scraper import WGCScraper
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,32 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def convert_to_model(qsd: QuarterlySupplyDemand) -> GoldSupplyDemand:
-    """Convert scraper dataclass to database model."""
-    return GoldSupplyDemand(
-        year=qsd.year,
-        quarter=qsd.quarter,
-        period=qsd.period,
-        mine_production=qsd.mine_production,
-        recycling=qsd.recycling,
-        net_hedging=qsd.net_hedging,
-        total_supply=qsd.total_supply,
-        jewelry=qsd.jewelry,
-        technology=qsd.technology,
-        total_investment=qsd.total_investment,
-        bars_coins=qsd.bars_coins,
-        etfs=qsd.etfs,
-        otc_investment=qsd.otc_investment,
-        central_banks=qsd.central_banks,
-        total_demand=qsd.total_demand,
-        supply_demand_balance=qsd.supply_demand_balance,
-        price_avg_usd=qsd.price_avg_usd,
-        data_source=qsd.source,
-    )
-
-
-def print_summary(data: list[QuarterlySupplyDemand]) -> None:
-    """Print a summary of the imported data."""
+def print_summary(data: list[GoldSupplyDemand]) -> None:
     if not data:
         print("\nNo data to display.")
         return
@@ -79,16 +54,6 @@ def print_summary(data: list[QuarterlySupplyDemand]) -> None:
 
 
 async def import_from_file(file_path: str, force: bool = False) -> int:
-    """
-    Import data from a local Excel file.
-
-    Args:
-        file_path: Path to the WGC Excel file
-        force: Force overwrite existing data
-
-    Returns:
-        Number of quarters imported
-    """
     logger.info(f"Importing from file: {file_path}")
 
     scraper = WGCScraper(http_client=HttpClient())
@@ -100,18 +65,15 @@ async def import_from_file(file_path: str, force: bool = False) -> int:
     logger.info(f"Found {len(data)} quarters in file")
     print_summary(data)
 
-    # Save to database
     saved = 0
     for qsd in data:
-        # Check if exists
         if not force:
             existing = await gold_supply_demand_store.get_by_quarter(qsd.year, qsd.quarter)
             if existing:
                 logger.debug(f"Data exists for {qsd.year} Q{qsd.quarter}, skipping")
                 continue
 
-        model = convert_to_model(qsd)
-        success = await gold_supply_demand_store.save_quarterly(model)
+        success = await gold_supply_demand_store.save_quarterly(qsd)
         if success:
             saved += 1
             logger.info(f"Imported {qsd.year} Q{qsd.quarter}")
@@ -121,15 +83,6 @@ async def import_from_file(file_path: str, force: bool = False) -> int:
 
 
 async def import_from_download(force: bool = False) -> int:
-    """
-    Download and import latest data from WGC.
-
-    Args:
-        force: Force overwrite existing data
-
-    Returns:
-        Number of quarters imported
-    """
     logger.info("Downloading latest WGC data...")
 
     scraper = WGCScraper(http_client=HttpClient())
@@ -148,8 +101,7 @@ async def import_from_download(force: bool = False) -> int:
             if existing:
                 continue
 
-        model = convert_to_model(qsd)
-        success = await gold_supply_demand_store.save_quarterly(model)
+        success = await gold_supply_demand_store.save_quarterly(qsd)
         if success:
             saved += 1
 
@@ -158,7 +110,6 @@ async def import_from_download(force: bool = False) -> int:
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    """Main async entry point."""
     if args.file:
         return await import_from_file(args.file, args.force)
     elif args.download:
@@ -169,7 +120,6 @@ async def main_async(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
-    """CLI entry point."""
     parser = argparse.ArgumentParser(description="Import WGC gold supply/demand data to database")
     parser.add_argument(
         "--file",

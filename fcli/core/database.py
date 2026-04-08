@@ -232,10 +232,3 @@ class Database:
             yield cls
         finally:
             await cls.close()
-
-    @classmethod
-    def row_to_dict(cls, row: asyncpg.Record | None) -> dict | None:
-        """Convert asyncpg Record to dict."""
-        if row is None:
-            return None
-        return dict(row)

@@ -196,17 +196,25 @@ class FundStore:
             return []
 
         try:
-            rows = await Database.fetch_all(
+            fund_rows = await Database.fetch_all("SELECT id, fund_code FROM funds")
+            if not fund_rows:
+                return []
+
+            fund_map = {row["id"]: row["fund_code"] for row in fund_rows}
+            fund_ids = list(fund_map.keys())
+
+            scale_rows = await Database.fetch_all(
                 """
-                SELECT f.fund_code
-                FROM funds f
-                LEFT JOIN fund_scales s ON f.id = s.fund_id
-                WHERE s.fetched_at < NOW() - INTERVAL '1 day' * $1::interval
-                   OR s.fetched_at IS NULL
+                SELECT DISTINCT fund_id
+                FROM fund_scales
+                WHERE fund_id = ANY($1)
+                  AND fetched_at >= NOW() - $2::interval * '1 day'
                 """,
+                fund_ids,
                 days,
             )
-            return [row["fund_code"] for row in rows]
+            fresh_ids = {row["fund_id"] for row in scale_rows}
+            return [code for fid, code in fund_map.items() if fid not in fresh_ids]
         except Exception as e:
             logger.error(f"Failed to get stale funds: {e}")
             return []
@@ -216,21 +224,27 @@ class FundStore:
             return []
 
         try:
+            fund = await Database.fetch_one(
+                "SELECT id FROM funds WHERE fund_code = $1",
+                code,
+            )
+            if not fund:
+                return []
+
             rows = await Database.fetch_all(
                 """
-                SELECT f.fund_code, s.report_date, s.scale, s.share, s.nav, s.fetched_at
-                FROM fund_scales s
-                JOIN funds f ON s.fund_id = f.id
-                WHERE f.fund_code = $1
-                ORDER BY s.report_date DESC
+                SELECT fund_id, report_date, scale, share, nav, fetched_at
+                FROM fund_scales
+                WHERE fund_id = $1
+                ORDER BY report_date DESC
                 LIMIT $2
                 """,
-                code,
+                fund["id"],
                 limit,
             )
             return [
                 FundScale(
-                    fund_code=row["fund_code"],
+                    fund_code=code,
                     report_date=row["report_date"],
                     scale=row["scale"],
                     share=row["share"],

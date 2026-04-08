@@ -17,6 +17,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
+    from .models import Asset
     from .models.base import AssetType, Market
 
 # ============================================================
@@ -473,14 +474,6 @@ class SymbolRegistry:
         return Market.US
 
     def infer_type(self, code: str) -> AssetType:
-        """从代码推断资产类型
-
-        Args:
-            code: 证券代码
-
-        Returns:
-            推断的资产类型
-        """
         from .models.base import AssetType
 
         gold_codes = {"GC", "XAU", "GOLD"}
@@ -491,8 +484,6 @@ class SymbolRegistry:
             prefix2 = code[:2]
             prefix3 = code[:3]
 
-            # ETF/LOF 常见前缀
-            # 11xxxx, 15xxxx, 16xxxx, 50xxxx, 51xxxx, 52xxxx, 159xxx
             fund_prefixes_2 = {"11", "15", "16", "50", "51", "52"}
             fund_prefixes_3 = {"159"}
 
@@ -500,6 +491,35 @@ class SymbolRegistry:
                 return AssetType.FUND
 
         return AssetType.STOCK
+
+    def create_asset(self, code: str) -> Asset:
+        from .models import Asset
+
+        code = code.strip()
+        code_upper = code.upper()
+        market = self.infer_market(code)
+        asset_type = self.infer_type(code)
+        api_code = self._to_api_code(code, market)
+        return Asset(
+            code=code_upper,
+            api_code=api_code,
+            name=code_upper,
+            market=market,
+            type=asset_type,
+        )
+
+    def _to_api_code(self, code: str, market: Market) -> str:
+        code_lower = code.lower()
+        if market == Market.CN:
+            if code_lower.startswith(("sh", "sz")):
+                return code_lower
+            prefix = code[:2]
+            return f"sh{code}" if prefix in ("60", "68") else f"sz{code}"
+        elif market == Market.HK:
+            code_num = code[-5:] if code.upper().startswith("HK") else code
+            return f"rt_hk{code_num}"
+        else:
+            return code_lower
 
 
 # ============================================================

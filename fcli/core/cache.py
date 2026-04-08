@@ -15,8 +15,6 @@ logger = get_logger("fcli.cache")
 
 
 class FileCache(CacheABC):
-    """File-based cache for local fallback."""
-
     def __init__(self):
         self.file_path = config.data_dir / "cache.json"
         self._ensure_file()
@@ -39,6 +37,12 @@ class FileCache(CacheABC):
         with open(self.file_path, "w") as f:
             json.dump(self._cache, f, indent=2, ensure_ascii=False)
 
+    async def _async_save(self):
+        try:
+            await asyncio.to_thread(self._save)
+        except Exception as e:
+            logger.error(f"Async save failed: {e}")
+
     def get(self, key: str) -> Any | None:
         if key in self._cache:
             entry = self._cache[key]
@@ -46,33 +50,32 @@ class FileCache(CacheABC):
                 return entry["data"]
             else:
                 del self._cache[key]
-                self._save()
         return None
 
     def set(self, key: str, data: Any, ttl: int):
         self._cache[key] = {"data": data, "expire_at": time.time() + ttl}
-        self._save()
 
     def delete(self, key: str):
         if key in self._cache:
             del self._cache[key]
-            self._save()
 
     def clear(self):
         self._cache = {}
-        self._save()
 
     async def async_get(self, key: str) -> Any | None:
         return self.get(key)
 
     async def async_set(self, key: str, data: Any, ttl: int):
         self.set(key, data, ttl)
+        await self._async_save()
 
     async def async_delete(self, key: str):
         self.delete(key)
+        await self._async_save()
 
     async def async_clear(self):
         self.clear()
+        await self._async_save()
 
 
 class PostgresCache(CacheABC):
@@ -255,6 +258,3 @@ class HybridCache(CacheABC):
     @property
     def is_postgres_available(self) -> bool:
         return self._postgres_available
-
-
-cache = HybridCache()

@@ -5,7 +5,7 @@
 
 import asyncio
 
-from ..core.cache import cache
+from ..core.cache import HybridCache
 from ..core.config import Settings, config
 from ..core.interfaces.cache import CacheABC
 from ..core.interfaces.source import ForexSourceABC
@@ -16,8 +16,6 @@ from ..utils.currency import COMMON_CURRENCIES
 
 
 class ForexService:
-    """汇率查询服务"""
-
     def __init__(
         self,
         sources: list[ForexSourceABC],
@@ -26,7 +24,7 @@ class ForexService:
         client: HttpClient | None = None,
     ):
         self._sources = sources
-        self._cache = cache_backend or cache
+        self._cache = cache_backend or HybridCache()
         self._config = settings or config
         self._http_client = client or http_client
 

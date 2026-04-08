@@ -22,43 +22,6 @@ class CacheStrategyBase(ABC):
 
 
 class AssetTypeCacheStrategy(CacheStrategyBase):
-    """
-    基于资产类型的缓存策略
-
-    TTL 配置策略：
-    - STOCK/FUND/INDEX: 交易时段短缓存，非交易时段长缓存
-    - GOLD: 按天缓存（黄金储备数据月度更新）
-    - FOREX: 中等缓存（汇率日内波动）
-    - BOND: 长缓存（债券数据更新频率低）
-    """
-
-    # 默认TTL配置（秒）
-    DEFAULT_TTLS = {
-        AssetType.STOCK: {
-            "trading": 30,
-            "non_trading": 300,
-        },
-        AssetType.FUND: {
-            "trading": 60,
-            "non_trading": 300,
-        },
-        AssetType.INDEX: {
-            "trading": 30,
-            "non_trading": 300,
-        },
-        AssetType.FOREX: {
-            "default": 3600,
-        },
-        AssetType.BOND: {
-            "default": 7200,
-        },
-        AssetType.GOLD: {
-            "default": 86400,
-        },
-    }
-
-    GOLD_TTL = 86400
-
     def __init__(
         self,
         stock_trading_ttl: int = 30,

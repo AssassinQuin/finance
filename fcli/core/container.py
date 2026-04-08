@@ -200,10 +200,5 @@ class Container:
         async with Database.session(self._config):
             yield
 
-    async def cleanup(self):
-        if self._http_client is not None:
-            await self._http_client.close()
-            self._http_client = None
-
 
 container = Container()
